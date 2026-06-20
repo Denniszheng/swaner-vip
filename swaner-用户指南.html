@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swaner POD Wave Viewer — 操作指南 v2.0</title>
+<style>
+  :root {
+    --red: #c41e3a;
+    --red-light: #fef2f4;
+    --dark: #1e293b;
+    --text: #334155;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --bg: #f8fafc;
+    --card: #fff;
+    --blue: #2563eb;
+    --yellow: #f59e0b;
+    --purple: #8b5cf6;
+    --green: #16a34a;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: "Noto Sans SC", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: var(--text); background: var(--bg); line-height: 1.8; font-size: 15px;
+  }
+  .hero {
+    background: linear-gradient(135deg, var(--dark) 0%, #0f172a 100%);
+    color: white; padding: 64px 24px 48px; text-align: center;
+  }
+  .hero h1 { font-size: 36px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .hero .sub { font-size: 16px; color: #94a3b8; }
+  .hero .badge { display: inline-block; margin-top: 16px; padding: 4px 16px; background: var(--red); color: white; border-radius: 20px; font-size: 13px; font-weight: 600; }
+  .container { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+  .toc {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 32px; margin: -40px auto 40px; max-width: 860px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  }
+  .toc h2 { font-size: 20px; color: var(--dark); margin-bottom: 16px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 6px 0; }
+  .toc a { color: var(--red); text-decoration: none; font-weight: 500; }
+  .toc a:hover { text-decoration: underline; }
+  section { margin: 48px auto; max-width: 860px; }
+  section h2 {
+    font-size: 24px; color: var(--dark); font-weight: 700;
+    border-left: 4px solid var(--red); padding-left: 16px; margin-bottom: 20px;
+  }
+  section h3 { font-size: 18px; color: var(--dark); margin: 24px 0 12px; }
+  p { margin-bottom: 12px; color: var(--text); }
+  ul, ol { margin: 8px 0 16px 20px; }
+  li { margin: 4px 0; }
+  code {
+    background: #f1f5f9; color: var(--red); padding: 2px 8px; border-radius: 4px;
+    font-family: "JetBrains Mono", "Consolas", monospace; font-size: 14px;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; margin: 16px 0;
+  }
+  .card h4 { font-size: 16px; color: var(--dark); margin-bottom: 8px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+  }
+  .badge.acc { background: #fef3c7; color: #b45309; }
+  .badge.std { background: #dbeafe; color: #1d4ed8; }
+  .badge.cust { background: #f3e8ff; color: #7c3aed; }
+  .badge.red { background: var(--red-light); color: var(--red); }
+
+  .tip {
+    background: #eff6ff; border-left: 4px solid var(--blue); padding: 16px 20px;
+    border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14px;
+  }
+  .warn {
+    background: #fffbeb; border-left: 4px solid var(--yellow); padding: 16px 20px;
+    border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 14px;
+  }
+
+  table { width:100%; border-collapse:collapse; margin:16px 0; font-size:14px; }
+  th { background:#f1f5f9; padding:10px 14px; text-align:left; font-weight:600; border-bottom:2px solid var(--border); }
+  td { padding:10px 14px; border-bottom:1px solid var(--border); }
+
+  .steps { counter-reset: step; }
+  .steps li { counter-increment: step; list-style: none; margin: 16px 0; padding-left: 40px; position: relative; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 28px; height: 28px; background: var(--red); color: white;
+    border-radius: 50%; text-align: center; line-height: 28px;
+    font-size: 13px; font-weight: 700;
+  }
+
+  .footer {
+    text-align: center; padding: 48px 24px; color: var(--muted);
+    border-top: 1px solid var(--border); margin-top: 64px; font-size: 13px;
+  }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 26px; }
+    .toc { padding: 20px; margin: -20px 16px 32px; }
+    section { padding: 0 8px; }
+  }
+  @media print {
+    body { background: white; font-size: 13px; }
+    .hero { padding: 24px; }
+    .toc { box-shadow: none; break-after: page; }
+    section { break-inside: avoid; }
+    .footer { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero">
+  <h1>📦 Swaner POD Wave Viewer</h1>
+  <div class="sub">订单详情 &amp; SKU 图片展示 — 操作指南</div>
+  <div class="badge">v2.0 · 2026-06-13</div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <h2>📑 目录</h2>
+  <ol>
+    <li><a href="#s1">系统概述</a></li>
+    <li><a href="#s2">波次查询</a></li>
+    <li><a href="#s3">SKU 管理中心</a></li>
+    <li><a href="#s4">图片管理中心</a></li>
+    <li><a href="#s5">其他功能</a></li>
+    <li><a href="#s6">常见问题</a></li>
+    <li><a href="#s7">技术支持</a></li>
+  </ol>
+</div>
+
+<!-- Section 1 -->
+<section id="s1">
+  <h2>一、系统概述</h2>
+  <p>Swaner POD Wave Viewer 是 POD（Print on Demand，按需印刷）行业的生产管理系统。主要对接<strong>领星 WMS</strong>，实现波次查询、面单打印、SKU 主数据管理和产品图片管理的全流程数字化。</p>
+  <p><strong>访问地址</strong>：<code>https://www.swaner.vip/</code></p>
+
+  <div class="card">
+    <h4>🎯 核心功能一览</h4>
+    <table>
+      <tr><th>模块</th><th>功能</th><th>入口</th></tr>
+      <tr><td>波次查询</td><td>从 WMS 拉取波次数据、查看订单明细、打印面单</td><td>首页搜索框</td></tr>
+      <tr><td>SKU Master</td><td>SKU 主数据管理、批量同步、概览分析</td><td>📋 SKU Master 按钮</td></tr>
+      <tr><td>图片管理</td><td>产品图片上传、缺图概览、批量删除</td><td>🖼️ 图片管理 按钮</td></tr>
+    </table>
+  </div>
+
+  <div class="tip">💡 <strong>数据存储说明</strong>：SKU 数据和产品图片存储在云端服务器，任何电脑打开 swaner.vip 都能访问，换电脑、清缓存不会丢失。</div>
+</section>
+
+<!-- Section 2 -->
+<section id="s2">
+  <h2>二、波次查询</h2>
+
+  <h3>2.1 查询波次</h3>
+  <ol class="steps">
+    <li>在首页顶部搜索框输入波次号（如 <code>W260611CV6</code>）</li>
+    <li>按 <strong>回车</strong> 或点击 <strong>查询</strong> 按钮</li>
+    <li>系统自动从领星 WMS 拉取该波次的所有订单数据并展示</li>
+  </ol>
+
+  <h3>2.2 阅读查询结果</h3>
+  <p>查询结果分为两部分：</p>
+  <ul>
+    <li><strong>顶部摘要</strong>：显示波次号、订单数、总件数</li>
+    <li><strong>明细表格</strong>：每行一个订单，每列一个 SKU 产品</li>
+  </ul>
+
+  <h3>2.3 SKU 类型标签</h3>
+  <p>每个 SKU 单元格底部显示数量 + 彩色类型标签：</p>
+  <table>
+    <tr><th>标签</th><th>类型</th><th>说明</th><th>示例</th></tr>
+    <tr><td><span class="badge acc">Accessories</span></td><td>配件</td><td>支架、底座、挂钩、连接件等</td><td>Round Display Stand、Rotatable Base</td></tr>
+    <tr><td><span class="badge std">Standard</span></td><td>普品</td><td>标准产品</td><td>标准图案产品</td></tr>
+    <tr><td><span class="badge cust">Customization</span></td><td>定制品</td><td>定制设计图案</td><td>The Eerie Wedding、Glass House</td></tr>
+  </table>
+
+  <div class="tip">💡 配件（Accessories）会自动排在前面，相同 SKU 的订单尽量挨在一起。</div>
+
+  <h3>2.4 面单打印</h3>
+  <ol class="steps">
+    <li>在订单行找到 🖨️ <strong>面单</strong> 按钮</li>
+    <li>点击后在新标签页打开面单 PDF</li>
+    <li>使用浏览器打印功能（Ctrl+P）直接打印</li>
+    <li>打印后按钮自动变为 ✅ 已打印</li>
+  </ol>
+
+  <div class="warn">⚠️ 面单数据来自领星 WMS，如果显示"未找到面单"，说明 WMS 中该订单尚未生成面单，请联系领星确认。</div>
+</section>
+
+<!-- Section 3 -->
+<section id="s3">
+  <h2>三、SKU 管理中心</h2>
+  <p>点击右上角 <code>📋 SKU Master</code> 按钮打开。所有 SKU 数据存储在云端，多设备共享。</p>
+
+  <h3>3.1 Standard / Accessories 清单</h3>
+  <ul>
+    <li>查看所有 Standard 和 Accessories SKU</li>
+    <li>可按<strong>类型</strong>筛选、按<strong>名称</strong>搜索</li>
+    <li>每次 WMS 波次查询<strong>自动收录</strong>新 SKU，维护日期为当天</li>
+  </ul>
+
+  <h3>3.2 Customization 清单</h3>
+  <p>查看所有定制品 SKU，同样支持搜索。</p>
+
+  <h3>3.3 📥 导入 / 批量同步</h3>
+  <p><strong>批量同步（推荐）</strong>：输入多个波次号（每行一个），点 🔄 开始同步，系统自动全部拉取并收录。</p>
+  <p><strong>手动导入</strong>：粘贴 SKU 数据，格式为 <code>SKU代码,类型</code>（如 <code>ABC001,Accessories</code>），每行一个。</p>
+
+  <h3>3.4 📊 概览</h3>
+  <p>查看 SKU 总数、各类型数量、<strong>每日增长趋势</strong>表。</p>
+
+  <h3>3.5 🗑️ 删除</h3>
+  <p>按类型、日期、名称筛选 → 勾选 → 批量删除。<span class="badge red">删除不可恢复，请谨慎操作</span></p>
+</section>
+
+<!-- Section 4 -->
+<section id="s4">
+  <h2>四、图片管理中心</h2>
+  <p>点击右上角 <code>🖼️ 图片管理</code> 按钮打开。</p>
+
+  <h3>4.1 上传图片</h3>
+  <ol class="steps">
+    <li>选择对应的 Tab：<strong>Standard / Accessories 上传</strong> 或 <strong>Customization 上传</strong></li>
+    <li>拖拽图片文件到上传区域，或点击选择文件</li>
+    <li><strong>文件名 = SKU 代码</strong>（不含 .png/.jpg 扩展名）</li>
+    <li>上传后自动加入 SKU Master（如为新 SKU）</li>
+  </ol>
+  <div class="tip">💡 如果上传失败，页面会显示每个失败文件的 <strong>SKU 名称</strong> 和 <strong>具体错误原因</strong>，方便排查。</div>
+
+  <h3>4.2 📊 概览（缺图检查）</h3>
+  <ul>
+    <li>显示 <strong>每个 SKU 的图片状态</strong>：✅ 有图 / ❌ 缺图</li>
+    <li>可按类型筛选</li>
+    <li><strong>📋 导出缺图清单</strong> → 下载 CSV 文件，方便发给团队找图后批量上传</li>
+  </ul>
+
+  <h3>4.3 🗑️ 删除图片</h3>
+  <p>按类型、名称筛选 → 勾选 → 批量删除。</p>
+</section>
+
+<!-- Section 5 -->
+<section id="s5">
+  <h2>五、其他功能</h2>
+
+  <h3>📷 扫码</h3>
+  <p>点击右上角 <code>📷 扫码</code> 打开摄像头，扫描波次号条形码/二维码 → 自动填入搜索框并查询。适用于生产现场快速操作。</p>
+
+  <h3>🔄 重置打印</h3>
+  <p>清除所有订单的"已打印"标记。适用于需要重新打印的场景。</p>
+
+  <h3>📋 复制订单号</h3>
+  <p>鼠标悬停在订单号上，点击出现的复制图标即可复制。</p>
+</section>
+
+<!-- Section 6 -->
+<section id="s6">
+  <h2>六、常见问题</h2>
+
+  <div class="card">
+    <h4>Q: 查询波次提示"WMS 加载失败"？</h4>
+    <p>检查网络连接是否正常。如果持续失败，可能是领星 WMS 服务异常，稍后重试。</p>
+  </div>
+  <div class="card">
+    <h4>Q: 上传图片失败怎么排查？</h4>
+    <p>系统会显示每个失败文件的 SKU 和错误原因。常见原因：文件损坏（太小）、格式不支持（仅 PNG/JPG/GIF/WebP）、文件名包含特殊字符。</p>
+  </div>
+  <div class="card">
+    <h4>Q: 换电脑后 SKU 数据还在吗？</h4>
+    <p>在。SKU 数据和图片都存储在云端服务器，任何电脑打开 swaner.vip 都能看到，不受本地浏览器限制。</p>
+  </div>
+  <div class="card">
+    <h4>Q: 面单按钮灰色点不了？</h4>
+    <p>说明该订单在 WMS 中尚未生成面单 PDF。请联系领星确认面单是否已生成。</p>
+  </div>
+  <div class="card">
+    <h4>Q: 如何批量导入已有 SKU 的图片？</h4>
+    <p>先在图片管理 → 概览 → 导出缺图清单 CSV，按清单收集图片（文件名=SKU代码），然后在图片管理上传即可。</p>
+  </div>
+</section>
+
+<!-- Section 7 -->
+<section id="s7">
+  <h2>七、技术支持</h2>
+  <div class="card">
+    <h4>📧 联系方式</h4>
+    <p><strong>邮箱</strong>：<code>961532216@qq.com</code></p>
+    <p><strong>访问地址</strong>：<code>https://www.swaner.vip/</code></p>
+    <p><strong>API 健康检查</strong>：<code>https://api.swaner.vip/health</code></p>
+    <p><strong>更新日期</strong>：2026-06-13</p>
+  </div>
+</section>
+
+<div class="footer">
+  Swaner POD Wave Viewer v2.0 &copy; 2026 · Powered by RiiChain
+</div>
+
+</body>
+</html>

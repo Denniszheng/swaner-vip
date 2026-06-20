@@ -1,0 +1,13 @@
+name = "wms-proxy"
+main = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+# routes disabled — using workers.dev direct URL instead
+
+[vars]
+WMS_APP_KEY = "60d2da562ee3492e8bdaaea44c611910"
+WMS_SECRET = "e7f3e07d4f15438da02308fa1ebf90be"
+
+[[kv_namespaces]]
+binding = "SKU_MASTER"
+id = "15edf51c6b3c4b19a130727bf610d6e2"

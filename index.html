@@ -1,0 +1,1539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POD Wave Viewer — 订单详情 & SKU 图片展示</title>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+// CDN fallback check
+  var _authReady = false;
+window.addEventListener('load', function() {
+  var libOK = true;
+  if (typeof XLSX === 'undefined') {
+    document.getElementById('lib-status').innerHTML = '⚠️ Excel库加载失败，请检查网络后刷新页面';
+    libOK = false;
+  }
+  if (typeof Html5Qrcode === 'undefined') {
+    document.getElementById('btn-scan').style.display = 'none';
+  }
+  if (libOK) {
+    document.getElementById('lib-status').innerHTML = '<span style="color:#16a34a;">✅ 就绪</span>';
+  }
+});
+</script>
+<style>
+:root { --bg:#f8fafc; --card:#fff; --border:#e2e8f0; --text:#1e293b; --muted:#64748b; --blue:#2563eb; --red:#dc2626; --green:#16a34a; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+.main-container { flex:1; overflow-y:auto; }
+.container { max-width:100%; padding:16px 20px; }
+.header { background:linear-gradient(135deg,#1e293b 0%,#334155 100%); color:white; padding:16px 24px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+.header h1 { font-size:20px; font-weight:700; }
+.top-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:16px 0; }
+.btn { padding:8px 16px; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; transition:all 0.15s; }
+.btn-blue { background:var(--blue); color:white; }
+.btn-blue:hover { background:#1d4ed8; }
+.btn-outline { background:white; border:1px solid var(--border); }
+.btn-outline:hover { background:#f1f5f9; }
+.btn-danger { background:var(--red); color:white; }
+.wave-input-area { display:flex; gap:10px; align-items:center; }
+.wave-input { padding:8px 14px; border:2px solid var(--border); border-radius:8px; font-size:15px; width:220px; font-family:monospace; font-weight:600; outline:none; transition:border-color 0.2s; }
+.wave-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
+.order-grid thead { position:sticky; top:0; z-index:5; display:table-header-group; }
+.order-grid thead th { background:#f1f5f9; position:sticky; top:0; }
+.summary-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin:16px 0; }
+.summary-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center; }
+.summary-card .val { font-size:28px; font-weight:800; }
+.summary-card .lbl { font-size:11px; color:var(--muted); margin-top:2px; }
+.status-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; }
+.status-found { background:#dcfce7; color:var(--green); }
+.status-notfound { background:#fee2e2; color:var(--red); }
+.order-grid { margin-top:16px; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+.order-grid table { width:100%; border-collapse:collapse; font-size:14px; min-width:800px; table-layout:fixed; }
+.order-grid th { padding:12px 14px; text-align:center; font-weight:600; font-size:13px; color:var(--muted); border-bottom:2px solid var(--border); resize:horizontal; overflow:hidden; min-width:80px; }
+.order-grid td { padding:10px 14px; text-align:center; border-bottom:1px solid var(--border); vertical-align:middle; overflow:hidden; text-overflow:ellipsis; }
+.order-grid tr:hover td { background:#f8fafc; }
+.sku-cell { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:100px; padding:4px; border-radius:8px; position:relative; }
+.sku-cell img { width:90px; height:90px; object-fit:contain; border-radius:8px; border:2px solid var(--border); background:#fff; transition:width 0.25s ease 0.18s, height 0.25s ease 0.18s, box-shadow 0.25s ease 0.18s, border-color 0.25s ease 0.18s; z-index:1; cursor:zoom-in; }
+.sku-cell img:hover { width:200px; height:200px; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:100; box-shadow:0 8px 24px rgba(0,0,0,0.25); border-color:var(--blue); border-width:3px; transition-delay:0s; }
+.sku-cell img:hover { z-index:100; }
+.sku-cell .sku-info { font-weight:600; font-size:14px; }
+.sku-cell .sku-qty { color:var(--red); font-weight:800; font-size:17px; }
+.order-no { font-family:monospace; font-weight:700; color:var(--blue); white-space:nowrap; font-size:17px; display:flex; align-items:center; justify-content:center; gap:0; }
+.order-no .copy-icon { display:inline-block; cursor:pointer; opacity:0; font-size:15px; transition:opacity 0.15s; position:relative; width:18px; height:18px; flex-shrink:0; }
+.order-no .copy-icon::before { content:''; position:absolute; bottom:0; left:0; width:11px; height:13px; border:2px solid #94a3b8; border-radius:2px; background:white; }
+.order-no .copy-icon::after { content:''; position:absolute; top:0; right:0; width:11px; height:13px; border:2px solid #94a3b8; border-radius:2px; background:white; }
+.order-no:hover .copy-icon { opacity:1; }
+.copy-toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#16a34a; color:white; padding:8px 20px; border-radius:8px; font-size:13px; z-index:99999; pointer-events:none; opacity:0; transition:opacity 0.3s; }
+.copy-toast.show { opacity:1; }
+.empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
+.empty-state .icon { font-size:48px; margin-bottom:12px; }
+#import-status { font-size:12px; margin-left:10px; }
+.scan-box { position:relative; }
+#reader { width:300px; border-radius:8px; overflow:hidden; }
+.hidden { display:none; }
+.file-info { font-size:11px; color:var(--muted); margin-top:4px; }
+
+/* Lightbox for full-size image preview */
+.lightbox { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; cursor:pointer; }
+.lightbox.active { display:flex; }
+.lightbox img { max-width:90vw; max-height:90vh; object-fit:contain; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+.lightbox .close-hint { position:absolute; top:20px; right:30px; color:white; font-size:14px; opacity:0.6; }
+
+
+
+
+
+/* SKU Master */
+.sku-panel-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;align-items:center;justify-content:center}
+.sku-panel-overlay.active{display:flex}
+.sku-panel{background:#fff;border-radius:16px;width:95vw;max-width:1100px;height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.sku-panel-header{padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between}
+.sku-panel-header h3{font-size:18px;font-weight:700;margin:0}
+.sku-panel-tabs{display:flex;gap:0;padding:0 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0}
+.sku-panel-tabs button{padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:3px solid transparent}
+.sku-panel-tabs button.active{color:#1e293b;border-bottom-color:#2563eb}
+.sku-panel-body{flex:1;overflow-y:auto;padding:20px 24px}
+.sku-panel-body .tab-content{display:none}
+.sku-panel-body .tab-content.active{display:block}
+.sku-panel .filter-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.sku-panel .filter-bar select,.sku-panel .filter-bar input{padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px}
+.sku-panel table{width:100%;border-collapse:collapse;font-size:13px}
+.sku-panel th{background:#f1f5f9;padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:12px}
+.sku-panel td{padding:8px 12px;border-bottom:1px solid #f1f5f9}
+.sku-panel .stat-card-mini{background:#f8fafc;border-radius:10px;padding:16px;text-align:center}
+.sku-panel .stat-card-mini .val{font-size:24px;font-weight:700}
+.sku-panel .stat-card-mini .lbl{font-size:11px;color:#64748b}
+.sku-panel .close-btn{background:none;border:none;font-size:22px;cursor:pointer;color:#94a3b8}
+.sku-panel .empty-state{text-align:center;padding:40px;color:#94a3b8}
+.sku-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.sku-badge.Standard{background:#dbeafe;color:#1e40af}
+.sku-badge.Accessories{background:#fef3c7;color:#92400e}
+.sku-badge.Customization{background:#fce7f3;color:#9d174d}
+.upload-zone:hover{background:#f8fafc;}</style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+
+
+<!-- Change Password Modal -->
+
+
+<!-- Admin User Management Modal -->
+
+
+<!-- Main Content -->
+
+
+
+<div class="header">
+  <div>
+    <h1>📦 POD Wave Viewer</h1>
+    <div style="font-size:12px;color:#94a3b8;margin-top:2px;">Order Detail & SKU Image Display</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <span id="data-status" style="font-size:12px;color:#94a3b8;">等待操作...</span>
+    <span id="lib-status" style="font-size:11px;color:#f59e0b;"></span>
+    <button class="btn btn-outline" onclick="openImgPanel()" style="background:rgba(255,255,255,0.15);color:#93c5fd;border:1px solid rgba(147,197,253,0.3);">🖼️ 图片管理</button>
+    <button class="btn btn-outline" onclick="openSkuPanel()" style="background:rgba(255,255,255,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);">📋 SKU Master</button>
+    <span id="proxy-status" style="font-size:11px;color:#94a3b8;"></span>
+    
+    <!-- 加载图库/导入长期SKU/清图库 已移至 图片管理中心 -->
+    <button id="btn-scan" class="btn btn-outline" onclick="toggleScanner()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);">📷 扫码</button>
+    <button class="btn btn-outline" onclick="resetPrinted()" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);" title="清除所有打印标记，恢复未打印状态">🔄 重置打印</button>
+  </div>
+</div>
+
+<input type="file" id="file-import" accept=".xlsx,.xls" class="hidden" onchange="importExcel(this)">
+<input type="file" id="image-import" accept="image/*" class="hidden" multiple onchange="loadImages(this)">
+<input type="file" id="std-image-import" accept="image/*" class="hidden" multiple onchange="importStdImages(this)">
+
+<div class="container" style="flex-shrink:0;">
+  <!-- Scan area -->
+  <div id="scan-area" class="hidden" style="margin-bottom:12px;">
+    <div id="reader"></div>
+    <button class="btn btn-danger" onclick="toggleScanner()" style="margin-top:8px;">关闭扫描</button>
+  </div>
+
+  <!-- Top: Wave Search + Summary -->
+  <div class="top-bar">
+    <div class="wave-input-area">
+      <span style="font-weight:700;font-size:14px;">🔍 Wave No.</span>
+      <input type="text" class="wave-input" id="wave-input" placeholder="输入波次号..." onkeypress="if(event.key==='Enter')searchWave()">
+      <button class="btn btn-blue" onclick="searchWave()">查询</button>
+    </div>
+    <span id="import-status"></span>
+  </div>
+
+  <!-- Wave Summary Cards -->
+  <div class="summary-row" id="summary-row"></div>
+  </div><!-- end sticky container -->
+
+  <!-- Order + SKU Detail Grid -->
+  <div class="main-container">
+  <div id="content-area">
+    <div class="empty-state">
+      <div class="icon">📥</div>
+    </div>
+  </div>
+
+  <!-- Lightbox for full-size image preview -->
+  <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+    <div class="close-hint">✕ 点击任意位置关闭</div>
+    <img id="lightbox-img" src="" alt="">
+  </div>
+</div>
+
+<script>
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('active');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+</script>
+
+<script>
+// ---- IndexedDB Image Store ----
+const DB_NAME = 'POD_ImageDB', DB_VER = 1;
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('images')) {
+        db.createObjectStore('images', {keyPath:'sku'});
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror = e => reject(e.target.error);
+  });
+}
+
+function saveImageToDB(sku, blob, productType) {
+  if (!db || productType === 'Customization') return; // Only persist Standard/Accessories
+  return new Promise((resolve) => {
+    const tx = db.transaction('images','readwrite');
+    tx.objectStore('images').put({sku, blob, productType, savedAt: Date.now()});
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve(); // ignore dupes
+  });
+}
+
+function loadAllFromDB() {
+  return new Promise((resolve) => {
+    if (!db) { resolve({}); return; }
+    const tx = db.transaction('images','readonly');
+    const req = tx.objectStore('images').getAll();
+    req.onsuccess = () => {
+      const map = {};
+      for (const r of req.result) {
+        map[r.sku] = URL.createObjectURL(r.blob);
+      }
+      resolve(map);
+    };
+    req.onerror = () => resolve({});
+  });
+}
+
+function clearDB() {
+  return new Promise((resolve) => {
+    if (!db) { resolve(); return; }
+    const tx = db.transaction('images','readwrite');
+    tx.objectStore('images').clear();
+    tx.oncomplete = () => resolve();
+  });
+}
+
+// ---- Global State ----
+let allRows = [];
+let waveMap = {};
+let imageCache = {};       // {skuName: blobUrl} — merged: DB persistence + current uploads
+let skuTypes = {};         // {skuName: productType} — from Excel
+let labelCache = {};       // {orderNo: dataUrl} — PDF shipping labels (pre-converted for print)
+let printedSet = {};       // {orderNo: true} —订单已打印（存localStorage）
+let currentWave = null;
+let scanner = null;
+try { printedSet = JSON.parse(localStorage.getItem('riichain_printed')||'{}'); } catch(e) { printedSet = {}; }
+function savePrinted() { localStorage.setItem('riichain_printed', JSON.stringify(printedSet)); }
+
+// ---- Drag & Drop ----
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.match(/\.xlsx?$/i)) {
+    processExcel(file);
+  }
+});
+
+// ---- Excel Import ----
+function importExcel(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (typeof XLSX === 'undefined') {
+    alert('Excel 解析库(XLSX)未加载。请检查网络连接后刷新页面重试。');
+    return;
+  }
+  processExcel(file);
+}
+
+function processExcel(file) {
+  console.log('Processing Excel:', file.name, file.size, 'bytes');
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(ws, {header:1});
+      if (data.length < 2) { alert('Excel 文件为空'); return; }
+
+      // ---- Build column index map from header row (position-independent) ----
+      const headerRow = data[0];
+      const colMap = {}; // {fieldName: columnIndex}
+      const fieldPatterns = {
+        orderNo:     ['Outbound Order No', '出库单号', '订单号', 'Order No'],
+        waveNo:      ['Wave No.', '波次号', '关联波次号', 'Wave'],
+        trackingNo:  ['Tracking No.', '快递单号', '运单号', 'Tracking'],
+        sku:         ['SKU', 'sku', 'Sku'],
+        qty:         ['Outbound Qty', '出库数量', '数量', 'Qty', 'Quantity'],
+        productType: ['Product Type', '产品分类', '产品类型', 'Type', 'Category'],
+      };
+
+      for (let c = 0; c < headerRow.length; c++) {
+        const hdr = String(headerRow[c] || '').trim();
+        for (const [field, patterns] of Object.entries(fieldPatterns)) {
+          if (patterns.some(p => hdr.includes(p))) {
+            colMap[field] = c;
+            break;
+          }
+        }
+      }
+      console.log('Column map:', colMap);
+
+      const get = (row, field) => {
+        const idx = colMap[field];
+        return idx !== undefined && idx < row.length ? String(row[idx] || '').trim() : '';
+      };
+
+      allRows = [];
+      skuTypes = {};
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const orderNo = get(row, 'orderNo');
+        const waveNo  = get(row, 'waveNo');
+        if (!orderNo || !waveNo) continue;
+        const sku   = get(row, 'sku');
+        const pType = get(row, 'productType') || 'Standard';
+        allRows.push({
+          orderNo: orderNo,
+          waveNo: waveNo,
+          trackingNo: get(row, 'trackingNo'),
+          sheetUrl: get(row, 'sheetUrl') || '',
+          sku: sku,
+          qty: parseInt(get(row, 'qty')) || 0,
+          productType: pType
+        });
+        skuTypes[sku] = pType;
+      }
+
+      buildWaveMap();
+
+      // Auto-load persisted images from IndexedDB
+      loadAllFromDB().then(persisted => {
+        let persistedCount = 0, neededCount = 0;
+        const neededSkus = new Set();
+        for (const r of allRows) {
+          if (persisted[r.sku]) {
+            imageCache[r.sku] = persisted[r.sku];
+            persistedCount++;
+          } else {
+            neededSkus.add(r.sku);
+            neededCount++;
+          }
+        }
+        // Count by type
+        const stdNeeded = [...neededSkus].filter(s => skuTypes[s] !== 'Customization').length;
+        const custNeeded = [...neededSkus].filter(s => skuTypes[s] === 'Customization').length;
+
+        document.getElementById('data-status').innerHTML =
+          `<span class="status-badge status-found">${allRows.length} rows · ${Object.keys(waveMap).length} waves</span>`;
+        let msg = `✅ ${allRows.length}行 · ${Object.keys(waveMap).length}Wave`;
+        if (persistedCount > 0) msg += ` · 📷 图库命中 ${persistedCount} 张`;
+        if (neededCount > 0) {
+          msg += ` · ⚠️ 缺 ${neededCount} 张`;
+          if (stdNeeded > 0) msg += ` (Standard/Accessories ${stdNeeded})`;
+          if (custNeeded > 0) msg += ` (Customization ${custNeeded})`;
+          msg += ' — 请上传图库';
+        } else {
+          msg += ' · ✅ 图片齐全';
+        }
+        document.getElementById('import-status').textContent = msg;
+
+        const waves = Object.keys(waveMap).sort();
+        if (waves.length > 0) {
+          document.getElementById('wave-input').value = waves[0];
+          searchWave();
+        }
+      });
+    } catch(err) {
+      alert('Excel 解析失败: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function buildWaveMap() {
+  waveMap = {};
+  for (const r of allRows) {
+    if (!waveMap[r.waveNo]) {
+      waveMap[r.waveNo] = {orders: new Set(), totalQty: 0, rows: []};
+    }
+    waveMap[r.waveNo].orders.add(r.orderNo);
+    waveMap[r.waveNo].totalQty += r.qty;
+    waveMap[r.waveNo].rows.push(r);
+  }
+}
+
+// ---- Image Loading ----
+function loadImages(input) {
+  const files = Array.from(input.files);
+  console.log('Loading', files.length, 'images');
+  let loaded = 0, savedToDB = 0;
+  for (const f of files) {
+    const name = f.name.replace(/\.[^.]+$/, '');
+    const blobUrl = URL.createObjectURL(f);
+    imageCache[name] = blobUrl;
+    loaded++;
+    // Auto-save Standard/Accessories to persistent DB
+    const pType = skuTypes[name] || '';
+    if (pType === 'Standard' || pType === 'Accessories') {
+      saveImageToDB(name, f, pType).then(() => { savedToDB++; });
+    }
+  }
+  let msg = `🖼️ 已加载 ${loaded} 张`;
+  if (savedToDB > 0) msg += ` · 💾 已保存 ${savedToDB} 张到图库数据库`;
+  document.getElementById('import-status').textContent = msg;
+  if (currentWave) renderWave(currentWave);
+}
+
+// ---- Wave Search ----
+async function searchWave() {
+  const input = document.getElementById('wave-input').value.trim();
+  if (!input) return;
+
+  // 1. 先在已加载数据中查找
+  const foundKey = Object.keys(waveMap).find(k => k.toLowerCase() === input.toLowerCase());
+  if (foundKey) {
+    currentWave = foundKey;
+    renderWave(foundKey);
+    return;
+  }
+
+  // 2. 未找到 → 自动从 WMS 加载
+  document.getElementById('import-status').textContent = '☁️ 正在从领星WMS拉取...';
+  try {
+    const r = await fetch('https://api.swaner.vip/wave-detail', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({waveNo: input})
+    });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const data = await r.json();
+    const rawData = data.data || data;
+    const details = rawData.details || [];
+
+    if (!details.length) {
+      document.getElementById('import-status').textContent = '';
+      document.getElementById('summary-row').innerHTML = `<div class="summary-card"><div class="val" style="color:var(--red);">?</div><div class="lbl">WMS 无此波次</div></div>`;
+      document.getElementById('content-area').innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>WMS 未找到: <strong>${input}</strong></p></div>`;
+      return;
+    }
+
+    // 合并到 allRows
+    for (const d of details) {
+      const orderNo = d.orderNo || '';
+      const sku = d.sku || '';
+      let pType = d.productType || 'Customization';
+      if (pType === '普品' || pType === 'Standard' || pType === 'standard') pType = 'Standard';
+      else if (pType === '配件' || pType === 'Accessories' || pType === 'accessories') pType = 'Accessories';
+      else if (pType === '定制品' || pType === 'Customization' || pType === 'customization') pType = 'Customization';
+      const qty = parseInt(d.qty) || 1;
+      const trackingNo = d.trackingNo || '';
+      allRows.push({ orderNo, waveNo: input, trackingNo, sku, qty, productType: pType, sheetUrl: d.sheetUrl || '' });
+      // Auto-capture SKU to Master
+      autoCaptureSkus([{sku: sku, productType: pType}]).catch(function(){});
+      skuTypes[sku] = pType;
+    }
+
+    buildWaveMap();
+    document.getElementById('import-status').textContent = `☁️ WMS: ${details.length}行 · ${Object.keys(waveMap).length}Wave`;
+    document.getElementById('data-status').innerHTML = `<span class="status-badge status-found">${allRows.length} rows · ${Object.keys(waveMap).length} waves</span>`;
+
+    // 再查找
+    const refoundKey = Object.keys(waveMap).find(k => k.toLowerCase() === input.toLowerCase());
+    if (refoundKey) {
+      currentWave = refoundKey;
+      renderWave(refoundKey);
+    }
+  } catch(e) {
+    document.getElementById('import-status').textContent = '';
+    document.getElementById('summary-row').innerHTML = `<div class="summary-card"><div class="val" style="color:var(--red);">!</div><div class="lbl">加载失败</div></div>`;
+    document.getElementById('content-area').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>WMS 加载失败: ${e.message}</p><p style="font-size:12px;">请检查网络连接</p></div>`;
+  }
+}
+
+function renderWave(waveNo) {
+  const wm = waveMap[waveNo];
+  if (!wm) return;
+
+  const orderCount = wm.orders.size;
+
+  // Build order→SKUs mapping
+  const orderMap = {};
+  for (const r of wm.rows) {
+    if (!orderMap[r.orderNo]) orderMap[r.orderNo] = [];
+    orderMap[r.orderNo].push({sku:r.sku, qty:r.qty, productType:r.productType});
+  }
+
+  // Sort each order's SKUs: Accessories first, then others
+  for (const orderNo of Object.keys(orderMap)) {
+    orderMap[orderNo].sort(function(a,b){
+      if (a.productType==='Accessories' && b.productType!=='Accessories') return -1;
+      if (b.productType==='Accessories' && a.productType!=='Accessories') return 1;
+      return 0;
+    });
+  }
+
+  // Find max SKU count
+  let maxSkus = 0;
+  for (const skus of Object.values(orderMap)) {
+    if (skus.length > maxSkus) maxSkus = skus.length;
+  }
+
+  // Sort orders: ones with same SKU sets together
+  const orders = Object.keys(orderMap).sort(function(a,b){
+    const sa = orderMap[a].map(function(s){return s.sku;}).join(',');
+    const sb = orderMap[b].map(function(s){return s.sku;}).join(',');
+    return sa.localeCompare(sb);
+  });
+
+  // Summary
+  var allPrinted = orders.length > 0 && orders.every(function(on){ return printedSet[on]; });
+  var waveColor = allPrinted ? '#16a34a' : 'var(--blue)';
+
+  document.getElementById('summary-row').innerHTML =
+    '<div class="summary-card"><div class="val" style="color:'+waveColor+';">'+waveNo+(allPrinted?' ✅':'')+'</div><div class="lbl">Wave No.</div></div>'+
+    '<div class="summary-card"><div class="val">'+orderCount+'</div><div class="lbl">订单数</div></div>'+
+    '<div class="summary-card"><div class="val">'+wm.totalQty+'</div><div class="lbl">总件数</div></div>'+
+    '<div class="summary-card"><div class="val">'+maxSkus+'</div><div class="lbl">最多SKU列</div></div>';
+
+  // Table header
+  let html = '<table><thead><tr><th style="min-width:150px;">📋 订单号</th><th style="width:90px;">🖨️ 面单</th>';
+  for (let i = 1; i <= maxSkus; i++) html += '<th>SKU'+i+'</th>';
+  html += '</tr></thead><tbody>';
+
+  // Type colors
+  function typeBadge(pt) {
+    var color = pt==='Accessories'?'#f59e0b':pt==='Standard'?'#3b82f6':'#8b5cf6';
+    var bg = pt==='Accessories'?'#fef3c7':pt==='Standard'?'#dbeafe':'#f3e8ff';
+    return '<span style="display:inline-block;background:'+bg+';color:'+color+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;">'+pt+'</span>';
+  }
+
+  for (const orderNo of orders) {
+    const skus = orderMap[orderNo];
+    const rowData = wm.rows.find(function(r){ return r.orderNo === orderNo; });
+    const sheetUrl = (rowData && rowData.sheetUrl) || '';
+    const hasLabel = !!labelCache[orderNo] || !!sheetUrl;
+    const isPrinted = !!printedSet[orderNo];
+    var btnStyle = isPrinted ? 'background:#16a34a;color:white;' : (hasLabel ? '' : 'background:#94a3b8;color:white;');
+    var btnText = isPrinted ? '✅' : '🖨️';
+
+    html += '<tr>'+
+      '<td><div class="order-no" style="display:flex;align-items:center;gap:4px;"><span>'+orderNo+'</span><span class="copy-icon" onclick="event.stopPropagation();copyOrderNo(\''+orderNo+'\')" title="复制"></span></div></td>'+
+      '<td><button class="btn '+(hasLabel&&!isPrinted?'btn-blue':'')+'" style="padding:6px 12px;font-size:12px;font-weight:700;'+btnStyle+'" onclick="printLabel(\''+orderNo+'\')">'+btnText+'</button></td>';
+
+    for (let i = 0; i < maxSkus; i++) {
+      if (i < skus.length) {
+        const s = skus[i];
+        const imgSrc = imageCache[s.sku] || '';
+        const imgHtml = imgSrc
+          ? '<img src="'+imgSrc+'" alt="'+s.sku+'" loading="lazy" onclick="event.stopPropagation();openLightbox(\''+imgSrc+'\')" style="width:70px;height:70px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;">'
+          : '<span style="font-size:10px;color:#94a3b8;">无图</span>';
+        html += '<td><div class="sku-cell" style="padding:4px;">'+
+          '<div class="sku-info" style="font-size:13px;">'+s.sku+'</div>'+
+          imgHtml+
+          '<div style="margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;">'+
+            '<span style="font-weight:700;font-size:15px;">× '+s.qty+'</span>'+
+            typeBadge(s.productType)+
+          '</div>'+
+          '</div></td>';
+      } else {
+        html += '<td></td>';
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+
+  document.getElementById('content-area').innerHTML = '<div class="order-grid">'+html+'</div>';
+}
+
+// ---- Barcode Scanner ----
+function toggleScanner() {
+  const area = document.getElementById('scan-area');
+  if (area.classList.contains('hidden')) {
+    area.classList.remove('hidden');
+    startScanner();
+    document.getElementById('btn-scan').textContent = '📷 关闭扫码';
+  } else {
+    area.classList.add('hidden');
+    stopScanner();
+    document.getElementById('btn-scan').textContent = '📷 扫码';
+  }
+}
+
+function startScanner() {
+  if (scanner) return;
+  scanner = new Html5Qrcode("reader");
+  scanner.start(
+    {facingMode:"environment"},
+    {fps:10, qrbox:{width:250, height:100}},
+    (decodedText) => {
+      document.getElementById('wave-input').value = decodedText;
+      stopScanner();
+      document.getElementById('scan-area').classList.add('hidden');
+      document.getElementById('btn-scan').textContent = '📷 扫码';
+      searchWave();
+    },
+    () => {} // ignore errors
+  ).catch(err => {
+    alert('摄像头启动失败: ' + err.message);
+    scanner = null;
+  });
+}
+
+function stopScanner() {
+  if (scanner) {
+    scanner.stop().then(() => { scanner = null; }).catch(() => { scanner = null; });
+  }
+}
+
+function importStdImages(input) {
+  const files = Array.from(input.files);
+  if (files.length === 0) return;
+  const productType = prompt('这些图片属于哪种类型？\n\n输入 Standard 或 Accessories', 'Standard');
+  if (!productType || (productType !== 'Standard' && productType !== 'Accessories')) {
+    alert('已取消。仅支持 Standard 或 Accessories 类型。');
+    input.value = '';
+    return;
+  }
+  let saved = 0;
+  const promises = [];
+  for (const f of files) {
+    const name = f.name.replace(/\.[^.]+$/, '');
+    imageCache[name] = URL.createObjectURL(f);
+    skuTypes[name] = productType;
+    promises.push(saveImageToDB(name, f, productType).then(() => { saved++; }));
+  }
+  Promise.all(promises).then(() => {
+    document.getElementById('import-status').textContent =
+      `💾 已导入 ${saved} 张 ${productType} SKU 图片到长期图库 (共 ${files.length} 张)`;
+    if (currentWave) renderWave(currentWave);
+  });
+  input.value = '';
+}
+
+// ---- Label PDF Import ----
+function importLabels(input) {
+  const files = Array.from(input.files);
+  if (files.length === 0) return;
+  let loaded = 0;
+  const total = files.length;
+  for (const f of files) {
+    const orderNo = f.name.replace(/\.pdf$/i, '').trim();
+    // Pre-convert to data URL at upload time so print() works without async
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const dataUrl = e.target.result;
+      labelCache[orderNo] = dataUrl;
+
+      // upload to WMS
+      const base64 = dataUrl.split(',')[1] || '';
+      fetch('/api/wms/upload-label', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          trackingNo: orderNo,
+          fileBase64: base64,
+          fileName: f.name,
+          fileType: 'pdf'
+        })
+      }).then(r => r.json()).then(d => {
+        console.log('Label uploaded:', orderNo, d);
+      }).catch(err => {
+        console.error('Label upload failed:', orderNo, err);
+      });
+
+      loaded++;
+      if (loaded === total) {
+        document.getElementById('import-status').textContent = `📮 已加载并上传 ${loaded} 张物流面单至WMS`;
+        if (currentWave) renderWave(currentWave);
+      }
+    };
+    reader.readAsDataURL(f);
+  }
+  input.value = '';
+}
+
+function resetPrinted() {
+  printedSet = {}; savePrinted();
+  if (currentWave) renderWave(currentWave);
+}
+
+// ---- WMS Integration ----
+function checkProxy() {
+  fetch('https://api.swaner.vip/health').then(function(r){
+    if(r.ok){
+      document.getElementById('proxy-status').textContent = '☁️ WMS已连接';
+      document.getElementById('proxy-status').style.color = '#16a34a';
+    }
+  }).catch(function(){
+    document.getElementById('proxy-status').textContent = '☁️ WMS离线';
+    document.getElementById('proxy-status').style.color = '#94a3b8';
+  });
+}
+checkProxy(); setInterval(checkProxy, 30000);
+
+function loadFromWMS() {
+  // 直接触发智能查询（自动从 WMS 加载）
+  searchWave();
+}
+
+function copyOrderNo(orderNo) {
+  navigator.clipboard.writeText(orderNo).then(function(){
+    var toast = document.createElement('div');
+    toast.className = 'copy-toast';
+    toast.textContent = '已复制: ' + orderNo;
+    document.body.appendChild(toast);
+    setTimeout(function(){ toast.classList.add('show'); }, 10);
+    setTimeout(function(){ toast.classList.remove('show'); setTimeout(function(){ toast.remove(); }, 300); }, 1200);
+  });
+}
+
+function printLabel(orderNo) {
+  var dataUrl = labelCache[orderNo];
+
+  // No cached label — try sheetUrl from WMS data
+  if (!dataUrl) {
+    var row = allRows.find(function(r){ return r.orderNo === orderNo && r.sheetUrl; });
+    if (row && row.sheetUrl) {
+      // Directly open WMS sheetUrl (COS signed URL — accessible from browser)
+      var w = window.open(row.sheetUrl, '_blank');
+      if (!w) { alert('请允许弹出窗口以打开面单'); return; }
+      printedSet[orderNo] = true; savePrinted(); renderWave(currentWave);
+      return;
+    }
+    alert('未找到订单 ' + orderNo + ' 的面单');
+    return;
+  }
+
+  // Cached local label (legacy)
+  var w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { alert('请允许弹出窗口'); return; }
+  w.document.title = orderNo + ' — 物流面单';
+  w.document.body.style.cssText = 'margin:0;padding:0;overflow:hidden;background:#525659;';
+  w.document.body.innerHTML = '<embed src="' + dataUrl + '" type="application/pdf" width="100%" height="100%" style="border:none;position:fixed;top:0;left:0;width:100vw;height:100vh;">';
+  printedSet[orderNo] = true; savePrinted(); renderWave(currentWave);
+}
+
+async function clearImageDB() {
+  if (!confirm('确认清除图库数据库？\n\n这将删除所有 Standard 和 Accessories 的持久化图片缓存。\n下次需要重新上传这些图片。\n\nCustomization 图片不受影响（不会存入数据库）。')) return;
+  await clearDB();
+  // Also clear current imageCache for persisted items (keep customization uploads)
+  for (const sku of Object.keys(skuTypes)) {
+    const pt = skuTypes[sku];
+    if (pt === 'Standard' || pt === 'Accessories') {
+      if (imageCache[sku]) URL.revokeObjectURL(imageCache[sku]);
+      delete imageCache[sku];
+    }
+  }
+  document.getElementById('import-status').textContent = '🗑️ 图库已清除，请重新上传 Standard/Accessories 图片';
+  if (currentWave) renderWave(currentWave);
+}
+
+// ---- Template Download ----
+function downloadTemplate() {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel 库未加载，请检查网络后刷新页面。');
+    return;
+  }
+  // Build template worksheet
+  const templateData = [
+    ['Outbound Order No./出库单号', 'Wave No./关联波次号', 'Tracking No./快递单号', 'SKU', 'Outbound Qty/出库数量', 'Product Type/产品分类'],
+    ['OBS0012605210RZ', 'W260521C66', 'GFUS01052328742144', 'YourSKU001', '12', 'Accessories'],
+    ['OBS0192605210T9', 'W260521C66', 'GFUS01052328035393', 'YourSKU002', '1', 'Standard'],
+    ['OBS0192605210T9', 'W260521C66', 'GFUS01052328035393', 'YourSKU003', '1', 'Customization'],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(templateData);
+  // Set column widths
+  ws['!cols'] = [
+    {wch: 28}, {wch: 22}, {wch: 28}, {wch: 22}, {wch: 22}, {wch: 18}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.writeFile(wb, 'POD_Wave_Import_Template.xlsx');
+}
+
+// Init DB on page load
+openDB().then(() => console.log('IndexedDB ready'));
+</script>
+
+<script>
+// ── Auth UI ──
+
+  document.getElementById("main-content").style.display = "block";
+  document.getElementById("proxy-status").textContent = currentSession.name;
+  document.getElementById("proxy-status").style.color = "#16a34a";
+}
+
+  var h = document.querySelector(".header div:last-child");
+  var b1 = document.createElement("button");
+  b1.className = "btn btn-outline";
+  b1.style.cssText = "background:rgba(255,255,255,0.15);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);";
+  b1.textContent = "⚙️ 系统配置";
+  b1.onclick = function(){ showModal("config-modal"); renderConfigTable(); };
+  h.appendChild(b1);
+}
+  var h = document.querySelector(".header div:last-child");
+  var b1 = document.createElement("button");
+  b1.className = "btn btn-outline";
+  b1.style.cssText = "background:rgba(255,255,255,0.15);color:#93c5fd;border:1px solid rgba(147,197,253,0.3);";
+  b1.textContent = "👥 用户管理";
+  b1.onclick = function(){ showModal("admin-modal"); renderAdminTable(); };
+  h.appendChild(b1);
+}
+  var b2 = document.createElement("button");
+  b2.className = "btn btn-outline";
+  b2.style.cssText = "background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);";
+  b2.textContent = "🚪 退出";
+  b2.onclick = doLogout;
+  h.appendChild(b2);
+}
+
+  var u = document.getElementById("login-user").value.trim();
+  var p = document.getElementById("login-pass").value;
+  if (!u || !p) { e.textContent = "请输入用户名和密码"; return; }
+  e.textContent = "登录中...";
+  try {
+    if (r.ok) { location.reload(); }
+    else { e.textContent = r.msg; }
+  } catch(ex) {
+    e.textContent = "登录异常: " + ex.message;
+  }
+}
+document.addEventListener("keydown", function(ev) {
+});
+
+function togglePass(inputId, el) {
+  var inp = document.getElementById(inputId);
+  if (inp.type === "password") { inp.type = "text"; el.textContent = "🙈"; }
+  else { inp.type = "password"; el.textContent = "👁"; }
+}
+
+function showForgotModal() { showModal("forgot-modal"); }
+  _forgotUser = document.getElementById("forgot-user").value.trim().toLowerCase();
+  var q = getSecurityQuestion(_forgotUser);
+  if (!q) { alert("账号不存在"); return; }
+  document.getElementById("forgot-question").textContent = "安全问题: " + q;
+  document.getElementById("forgot-step2").style.display = "block";
+}
+  var a = document.getElementById("forgot-answer").value;
+  var p = document.getElementById("forgot-newpw").value;
+  if (!a || !p) { alert("请填写完整"); return; }
+  var r = await resetPassword(_forgotUser, a, p);
+  alert(r.ok ? "密码已重置，请重新登录" : r.msg);
+  if (r.ok) hideModal("forgot-modal");
+}
+
+function showChangePwModal() {
+  var s = getSession();
+  if (s) document.getElementById("changepw-user-display").textContent = "当前账号: " + s.username;
+  showModal("changepw-modal");
+}
+  var s = getSession();
+  var u = s ? s.username : document.getElementById("login-user").value.trim().toLowerCase();
+  var o = document.getElementById("changepw-old").value;
+  var n = document.getElementById("changepw-new").value;
+  var c = document.getElementById("changepw-confirm").value;
+  if (!o || !n || !c) { alert("请填写完整"); return; }
+  if (n !== c) { alert("两次新密码不一致"); return; }
+  var r = await changePassword(u, o, n);
+  alert(r.ok ? "密码已修改" : r.msg);
+  if (r.ok) hideModal("changepw-modal");
+}
+
+// Super admin
+  var users = listUsers();
+  document.querySelector("#config-user-table tbody").innerHTML = users.map(function(u) {
+    var rb = "role-" + u.role;
+    var rn = u.role === "superadmin" ? "超级管理员" : u.role === "admin" ? "管理员" : "普通用户";
+    var del = u.role === "superadmin" ? "" : '<button class="btn btn-danger" style="padding:2px 10px;font-size:11px;" onclick="configDel(\'' + u.username + '\')">删除</button>';
+    var rst = u.role === "superadmin" ? "" : '<button class="btn btn-secondary" style="padding:2px 10px;font-size:11px;" onclick="configReset(\'' + u.username + '\')">重置密码</button>';
+    return '<tr><td>' + u.username + '</td><td><span class="role-badge ' + rb + '">' + rn + '</span></td><td>' + u.name + '</td><td>' + rst + del + '</td></tr>';
+  }).join("");
+}
+  var u = document.getElementById("config-new-user").value.trim();
+  var p = document.getElementById("config-new-pw").value;
+  var r = document.getElementById("config-new-role").value;
+  var n = document.getElementById("config-new-name").value.trim() || u;
+  if (!u || !p) { alert("请填写用户名和密码"); return; }
+  superAdminAddUser(u, p, r, n, "系统默认密码？", "swaner2026");
+  setTimeout(function(){ renderConfigTable(); alert("账号已创建"); }, 600);
+}
+  if (!confirm("确认删除 " + uname + "？")) return;
+  alert(superAdminDeleteUser(uname).msg || "已删除");
+  renderConfigTable();
+}
+  var np = prompt("为 " + uname + " 设置新密码（至少6位）:");
+  if (!np) return;
+  superAdminResetPassword(uname, np);
+  setTimeout(function(){ alert("密码已重置"); }, 600);
+}
+
+// Admin
+  var users = listUsers().filter(function(u){ return u.role === "user"; });
+  document.querySelector("#admin-user-table tbody").innerHTML = users.map(function(u) {
+    return '<tr><td>' + u.username + '</td><td>' + u.name + '</td><td><button class="btn btn-danger" style="padding:2px 10px;font-size:11px;" onclick="adminDelUser(\'' + u.username + '\')">删除</button></td></tr>';
+  }).join("");
+}
+  var u = document.getElementById("admin-new-user").value.trim();
+  var p = document.getElementById("admin-new-pw").value;
+  var n = document.getElementById("admin-new-name").value.trim() || u;
+  if (!u || !p) { alert("请填写用户名和密码"); return; }
+  adminAddUser(u, p, n);
+  setTimeout(function(){ renderAdminTable(); alert("用户已创建"); }, 600);
+}
+  if (!confirm("确认删除 " + uname + "？")) return;
+  alert(adminDeleteUser(uname).msg || "已删除");
+  renderAdminTable();
+}
+</script>
+
+
+<!-- SKU Master Panel -->
+<div class="sku-panel-overlay" id="sku-panel-overlay">
+<div class="sku-panel">
+<div class="sku-panel-header">
+<h3>📋 SKU Master — SKU管理中心</h3>
+<button class="close-btn" onclick="document.getElementById('sku-panel-overlay').classList.remove('active')">&times;</button>
+</div>
+<div class="sku-panel-tabs">
+<button class="active" onclick="switchSkuTab('tab-std',this)">Standard / Accessories</button>
+<button onclick="switchSkuTab('tab-cust',this)">Customization</button>
+<button onclick="switchSkuTab('tab-import',this)">📥 导入</button>
+<button onclick="switchSkuTab('tab-overview',this)">📊 概览</button>
+<button onclick="switchSkuTab('tab-delete',this)">🗑️ 删除</button>
+</div>
+<div class="sku-panel-body">
+<div class="tab-content active" id="tab-std">
+<div class="filter-bar">
+<select id="std-type-filter" onchange="renderStdTable()"><option value="">全部类型</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option></select>
+<input type="text" id="std-search" placeholder="搜索SKU..." oninput="renderStdTable()" style="width:200px;">
+<span style="font-size:12px;color:#64748b;" id="std-count"></span>
+</div>
+<div style="max-height:55vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="std-tbody"><tr><td colspan="4" class="empty-state">加载中...</td></tr></tbody></table></div>
+</div>
+<div class="tab-content" id="tab-cust">
+<div class="filter-bar"><input type="text" id="cust-search" placeholder="搜索SKU..." oninput="renderCustTable()" style="width:200px;"><span style="font-size:12px;color:#64748b;" id="cust-count"></span></div>
+<div style="max-height:55vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="cust-tbody"><tr><td colspan="4" class="empty-state">加载中...</td></tr></tbody></table></div>
+</div>
+<div class="tab-content" id="tab-import">
+<h4>🔄 从领星批量同步</h4>
+<p style="font-size:12px;color:#64748b;margin-bottom:8px;">输入波次号（每行一个）</p>
+<textarea id="bulk-wave-input" rows="4" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-family:monospace;font-size:13px;margin-bottom:8px;" placeholder="W260611CV6"></textarea>
+<button onclick="bulkSyncFromWMS()" style="background:#1e293b;color:#fff;padding:8px 20px;border:none;border-radius:8px;cursor:pointer;margin-bottom:8px;">🔄 开始同步</button>
+<span id="bulk-sync-status" style="font-size:12px;display:block;"></span>
+<h4 style="margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">📥 手动导入</h4>
+<p style="font-size:12px;color:#64748b;margin-bottom:8px;">格式: SKU代码,类型(Standard/Accessories/Customization)</p>
+<textarea id="sku-import-text" rows="6" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-family:monospace;font-size:13px;" placeholder="SKU001,Standard"></textarea>
+<button onclick="doSkuImport()" style="background:#1e293b;color:#fff;padding:8px 20px;border:none;border-radius:8px;cursor:pointer;margin-top:8px;">导入</button>
+<span id="import-result" style="font-size:12px;margin-left:8px;"></span>
+</div>
+<div class="tab-content" id="tab-overview">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+<div class="stat-card-mini"><div class="val" id="ov-total">-</div><div class="lbl">SKU总数</div></div>
+<div class="stat-card-mini"><div class="val" id="ov-std">-</div><div class="lbl">Standard</div></div>
+<div class="stat-card-mini"><div class="val" id="ov-acc">-</div><div class="lbl">Accessories</div></div>
+<div class="stat-card-mini"><div class="val" id="ov-cust">-</div><div class="lbl">Customization</div></div>
+</div>
+<h4 style="font-size:14px;">📈 增长趋势</h4>
+<div style="max-height:200px;overflow-y:auto;"><table><thead><tr><th>日期</th><th>新增</th><th>累计</th></tr></thead><tbody id="trend-tbody"></tbody></table></div>
+</div>
+<div class="tab-content" id="tab-delete">
+<div class="filter-bar">
+<select id="del-type-filter" onchange="renderDeleteTable()"><option value="">全部</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+<input type="date" id="del-date-from" onchange="renderDeleteTable()" style="width:130px;" title="开始日期">
+<input type="date" id="del-date-to" onchange="renderDeleteTable()" style="width:130px;" title="结束日期">
+<input type="text" id="del-search" placeholder="搜索SKU..." oninput="renderDeleteTable()" style="width:160px;">
+<button onclick="batchDeleteSkus()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">批量删除选中</button>
+<span id="del-count" style="font-size:12px;color:#64748b;"></span>
+</div>
+<div style="max-height:48vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="del-select-all" onchange="toggleAllDel(this)"></th><th>SKU</th><th>类型</th><th>维护日期</th><th>来源</th></tr></thead><tbody id="del-tbody"></tbody></table></div>
+</div>
+</div>
+</div>
+</div>
+<script>
+/* === SKU Master — Cloudflare KV via api.swaner.vip === */
+var SKU_API = "https://api.swaner.vip/sku";
+var selectedForDelete = {};
+
+function openSkuPanel() {
+  document.getElementById("sku-panel-overlay").classList.add("active");
+  switchSkuTab("tab-std");
+}
+document.getElementById("sku-panel-overlay").addEventListener("click", function(e) {
+  if (e.target === this) this.classList.remove("active");
+});
+
+function switchSkuTab(tabId, btn) {
+  var tabs = document.querySelectorAll(".sku-panel-body .tab-content");
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
+  document.getElementById(tabId).classList.add("active");
+  var btns = document.querySelectorAll(".sku-panel-tabs button");
+  for (var j = 0; j < btns.length; j++) btns[j].classList.remove("active");
+  if (btn) btn.classList.add("active");
+  if (tabId === "tab-std" || tabId === "tab-cust") renderSkuTables();
+  if (tabId === "tab-overview") renderOverview();
+  if (tabId === "tab-delete") renderDeleteTable();
+}
+
+/* === API helpers === */
+async function getSkuList(filter) {
+  var params = [];
+  if (filter) {
+    if (filter.productType) params.push("productType=" + encodeURIComponent(filter.productType));
+    if (filter.dateFrom) params.push("dateFrom=" + filter.dateFrom);
+    if (filter.dateTo) params.push("dateTo=" + filter.dateTo);
+    if (filter.skuName) params.push("search=" + encodeURIComponent(filter.skuName));
+  }
+  var url = SKU_API + "/list" + (params.length ? "?" + params.join("&") : "");
+  var r = await fetch(url);
+  var d = await r.json();
+  return d.data || [];
+}
+
+async function getSkuStats() {
+  var r = await fetch(SKU_API + "/stats");
+  var d = await r.json();
+  return d.data || { total: 0, standard: 0, accessories: 0, customization: 0, byDate: {} };
+}
+
+async function upsertSkus(skus) {
+  var r = await fetch(SKU_API + "/upsert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skus: skus })
+  });
+  return r.json();
+}
+
+async function deleteSkus(skuList) {
+  var r = await fetch(SKU_API + "/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skus: skuList })
+  });
+  var d = await r.json();
+  return d.deleted || 0;
+}
+
+async function autoCaptureSkus(details) {
+  var skus = [];
+  for (var i = 0; i < details.length; i++) {
+    var d = details[i];
+    if (!d.sku) continue;
+    var pt = d.productType || "Customization";
+    if (pt === "Standard" || pt === "Accessories" || pt === "Customization") {
+      skus.push({ sku: d.sku, productType: pt, source: "wms" });
+    }
+  }
+  if (skus.length === 0) return 0;
+  var r = await upsertSkus(skus);
+  return r.count || 0;
+}
+
+/* === Table rendering === */
+async function renderSkuTables() {
+  var all = await getSkuList();
+  renderStdTableData(all);
+  renderCustTableData(all);
+}
+
+function renderStdTable() { getSkuList().then(renderStdTableData); }
+
+function renderStdTableData(all) {
+  var typeFilter = document.getElementById("std-type-filter").value;
+  var search = (document.getElementById("std-search").value || "").toLowerCase();
+  var filtered = all.filter(function(r) {
+    if (r.productType === "Customization") return false;
+    if (typeFilter && r.productType !== typeFilter) return false;
+    if (search && r.sku.toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  });
+  document.getElementById("std-count").textContent = filtered.length + " 条";
+  var tbody = document.getElementById("std-tbody");
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(function(r) {
+    return '<tr><td><code>' + r.sku + '</code></td><td><span class="sku-badge ' + r.productType + '">' + r.productType + '</span></td><td>' + r.maintainDate + '</td><td>' + r.source + '</td></tr>';
+  }).join("");
+}
+
+function renderCustTable() { getSkuList().then(renderCustTableData); }
+
+function renderCustTableData(all) {
+  var search = (document.getElementById("cust-search").value || "").toLowerCase();
+  var filtered = all.filter(function(r) {
+    if (r.productType !== "Customization") return false;
+    if (search && r.sku.toLowerCase().indexOf(search) === -1) return false;
+    return true;
+  });
+  document.getElementById("cust-count").textContent = filtered.length + " 条";
+  var tbody = document.getElementById("cust-tbody");
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">暂无数据（从WMS查询波次后自动收录）</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(function(r) {
+    return '<tr><td><code>' + r.sku + '</code></td><td><span class="sku-badge Customization">Customization</span></td><td>' + r.maintainDate + '</td><td>' + r.source + '</td></tr>';
+  }).join("");
+}
+
+/* === Import === */
+async function doSkuImport() {
+  var text = document.getElementById("sku-import-text").value.trim();
+  if (!text) { alert("请输入SKU数据"); return; }
+  var lines = text.split(/[\n\r]+/).filter(function(l) { return l.trim(); });
+  var rows = [];
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split(",");
+    if (parts.length < 2) continue;
+    rows.push({ sku: parts[0].trim(), productType: parts[1].trim(), status: parts[2] ? parts[2].trim() : "" });
+  }
+  if (rows.length === 0) { alert("未解析到有效SKU数据"); return; }
+  await upsertSkus(rows);
+  document.getElementById("import-result").textContent = "已导入 " + rows.length + " 个SKU";
+  document.getElementById("sku-import-text").value = "";
+}
+
+/* === Bulk sync from WMS === */
+async function bulkSyncFromWMS() {
+  var raw = document.getElementById("bulk-wave-input").value.trim();
+  if (!raw) { alert("请输入至少一个波次号"); return; }
+  var waves = raw.split(/[\n\r]+/).filter(function(l) { return l.trim(); });
+  var status = document.getElementById("bulk-sync-status");
+  status.textContent = "正在同步 " + waves.length + " 个波次...";
+  var totalSkus = 0;
+  for (var i = 0; i < waves.length; i++) {
+    try {
+      var r = await fetch("https://api.swaner.vip/wave-detail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ waveNo: waves[i].trim() })
+      });
+      if (!r.ok) continue;
+      var data = await r.json();
+      var details = (data.data && data.data.details) || [];
+      if (details.length > 0) {
+        var count = await autoCaptureSkus(details);
+        totalSkus += count;
+      }
+      status.textContent = "已处理 " + (i + 1) + "/" + waves.length + " 波次，收录 " + totalSkus + " 个SKU";
+    } catch (e) {
+      status.textContent = "波次 " + waves[i] + " 失败: " + e.message;
+    }
+  }
+  status.textContent = "完成！同步 " + waves.length + " 波次，收录 " + totalSkus + " SKU";
+  document.getElementById("bulk-wave-input").value = "";
+  renderSkuTables();
+}
+
+/* === Overview === */
+async function renderOverview() {
+  var stats = await getSkuStats();
+  document.getElementById("ov-total").textContent = stats.total;
+  document.getElementById("ov-std").textContent = stats.standard;
+  document.getElementById("ov-acc").textContent = stats.accessories;
+  document.getElementById("ov-cust").textContent = stats.customization;
+  var dates = Object.keys(stats.byDate).sort();
+  var cum = 0;
+  var rows = "";
+  for (var i = 0; i < dates.length; i++) {
+    cum += stats.byDate[dates[i]];
+    rows += "<tr><td>" + dates[i] + "</td><td>+" + stats.byDate[dates[i]] + "</td><td>" + cum + "</td></tr>";
+  }
+  document.getElementById("trend-tbody").innerHTML = rows || '<tr><td colspan="3" class="empty-state">暂无数据</td></tr>';
+}
+
+/* === Delete === */
+function toggleAllDel(cb) {
+  var cbs = document.querySelectorAll("#del-tbody input[type=checkbox]");
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = cb.checked;
+    var sku = cbs[i].closest("tr").querySelector("code").textContent;
+    if (cb.checked) selectedForDelete[sku] = true; else delete selectedForDelete[sku];
+  }
+}
+
+function toggleDelSku(sku, checked) {
+  if (checked) selectedForDelete[sku] = true; else delete selectedForDelete[sku];
+}
+
+async function renderDeleteTable() {
+  var filter = {};
+  var pt = document.getElementById("del-type-filter").value;
+  var df = document.getElementById("del-date-from").value;
+  var dt = document.getElementById("del-date-to").value;
+  var srch = (document.getElementById("del-search").value || "").toLowerCase();
+  if (pt) filter.productType = pt;
+  if (df) filter.dateFrom = df;
+  if (dt) filter.dateTo = dt;
+  filter.skuName = srch;
+  var all = await getSkuList(filter);
+  document.getElementById("del-count").textContent = all.length + " 条";
+  selectedForDelete = {};
+  document.getElementById("del-select-all").checked = false;
+  var tbody = document.getElementById("del-tbody");
+  if (all.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">无匹配数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = all.map(function(r) {
+    return '<tr><td><input type="checkbox" onchange="toggleDelSku(\'' + r.sku + '\',this.checked)"></td><td><code>' + r.sku + '</code></td><td><span class="sku-badge ' + r.productType + '">' + r.productType + '</span></td><td>' + r.maintainDate + '</td><td>' + r.source + '</td></tr>';
+  }).join("");
+}
+
+async function batchDeleteSkus() {
+  var list = Object.keys(selectedForDelete);
+  if (list.length === 0) { alert("请先勾选要删除的SKU"); return; }
+  if (!confirm("确认删除 " + list.length + " 个SKU？")) return;
+  var count = await deleteSkus(list);
+  alert("已删除 " + count + " 个");
+  renderDeleteTable();
+}
+
+/* === Auto-capture on WMS search === */
+var _origSearchWave = searchWave;
+searchWave = async function() {
+  var input = document.getElementById("wave-input").value.trim();
+  if (!input) return;
+  var foundKey = Object.keys(waveMap).find(function(k) { return k.toLowerCase() === input.toLowerCase(); });
+  if (foundKey) { currentWave = foundKey; renderWave(foundKey); return; }
+  _origSearchWave.apply(this, arguments);
+};
+</script>
+<!-- Image Management Panel -->
+<div class="sku-panel-overlay" id="img-panel-overlay">
+<div class="sku-panel">
+<div class="sku-panel-header">
+<h3>🖼️ 图片管理中心</h3>
+<button class="close-btn" onclick="document.getElementById('img-panel-overlay').classList.remove('active')">&times;</button>
+</div>
+<div class="sku-panel-tabs">
+<button class="active" onclick="switchImgTab('tab-img-upload-std',this)">Standard / Accessories 上传</button>
+<button onclick="switchImgTab('tab-img-upload-cust',this)">Customization 上传</button>
+<button onclick="switchImgTab('tab-img-overview',this)">📊 概览</button>
+<button onclick="switchImgTab('tab-img-delete',this)">🗑️ 删除</button>
+</div>
+<div class="sku-panel-body">
+
+<!-- Tab 1: Upload Standard/Accessories -->
+<div class="tab-content active" id="tab-img-upload-std">
+<p style="font-size:13px;color:#64748b;margin-bottom:12px;">选择图片文件（文件名 = SKU名称），自动匹配 Standard/Accessories，新SKU自动加入Master</p>
+<div class="upload-zone" id="img-drop-std" style="border:2px dashed #2563eb;border-radius:12px;padding:30px;text-align:center;cursor:pointer;margin-bottom:12px;">
+<i class="bi bi-cloud-upload" style="font-size:2rem;color:#2563eb;"></i>
+<div style="margin-top:8px;">拖拽或点击选择 Standard / Accessories 图片</div>
+<div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
+</div>
+<input type="file" id="img-input-std" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Standard')">
+<div style="margin-bottom:8px;">
+<select id="img-std-type" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+<option value="Standard">类型: Standard</option>
+<option value="Accessories">类型: Accessories</option>
+</select>
+</div>
+<div id="img-upload-std-status" style="font-size:12px;color:#64748b;"></div>
+</div>
+
+<!-- Tab 2: Upload Customization -->
+<div class="tab-content" id="tab-img-upload-cust">
+<p style="font-size:13px;color:#64748b;margin-bottom:12px;">选择定制款图片文件，新SKU自动加入Master</p>
+<div class="upload-zone" id="img-drop-cust" style="border:2px dashed #9d174d;border-radius:12px;padding:30px;text-align:center;cursor:pointer;margin-bottom:12px;">
+<i class="bi bi-cloud-upload" style="font-size:2rem;color:#9d174d;"></i>
+<div style="margin-top:8px;">拖拽或点击选择 Customization 图片</div>
+<div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
+</div>
+<input type="file" id="img-input-cust" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Customization')">
+<div id="img-upload-cust-status" style="font-size:12px;color:#64748b;"></div>
+</div>
+
+<!-- Tab 3: Overview -->
+<div class="tab-content" id="tab-img-overview">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+<div class="stat-card-mini"><div class="val" id="img-ov-total">-</div><div class="lbl">SKU总数</div></div>
+<div class="stat-card-mini"><div class="val" id="img-ov-has">-</div><div class="lbl">已有图片</div></div>
+<div class="stat-card-mini"><div class="val" id="img-ov-miss" style="color:#dc2626;">-</div><div class="lbl">缺少图片</div></div>
+<div class="stat-card-mini"><div class="val" id="img-ov-rate">-</div><div class="lbl">覆盖率</div></div>
+</div>
+<div class="filter-bar">
+<select id="img-ov-type" onchange="renderImgOverview()"><option value="">全部类型</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+<select id="img-ov-filter" onchange="renderImgOverview()"><option value="missing">仅显示缺图</option><option value="all">全部显示</option><option value="has">仅显示有图</option></select>
+<button onclick="exportMissingSkus()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">📋 导出缺图清单</button>
+<span id="img-ov-count" style="font-size:12px;color:#64748b;"></span>
+</div>
+<div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>图片状态</th></tr></thead><tbody id="img-ov-tbody"></tbody></table></div>
+</div>
+
+<!-- Tab 4: Delete -->
+<div class="tab-content" id="tab-img-delete">
+<div class="filter-bar">
+<select id="img-del-type" onchange="renderImgDeleteTable()"><option value="">全部类型</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
+<input type="text" id="img-del-search" placeholder="搜索SKU..." oninput="renderImgDeleteTable()" style="width:160px;">
+<button onclick="batchDeleteImages()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">批量删除选中</button>
+<span id="img-del-count" style="font-size:12px;color:#64748b;"></span>
+</div>
+<div style="max-height:48vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="img-del-select-all" onchange="toggleAllImgDel(this)"></th><th>SKU</th><th>类型</th><th>文件名</th><th>大小</th><th>上传时间</th></tr></thead><tbody id="img-del-tbody"></tbody></table></div>
+</div>
+
+</div>
+</div>
+</div>
+<script>
+/* === Image Management Center === */
+var IMG_API = "https://api.swaner.vip/image";
+var imgSelectedForDelete = {};
+
+function openImgPanel() {
+  document.getElementById("img-panel-overlay").classList.add("active");
+  switchImgTab("tab-img-upload-std");
+}
+document.addEventListener("DOMContentLoaded", function() {
+  var panel = document.getElementById("img-panel-overlay");
+  if (panel) panel.addEventListener("click", function(e) { if (e.target === this) this.classList.remove("active"); });
+});
+
+function switchImgTab(tabId, btn) {
+  var tabs = document.querySelectorAll("#img-panel-overlay .tab-content");
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove("active");
+  document.getElementById(tabId).classList.add("active");
+  var btns = document.querySelectorAll("#img-panel-overlay .sku-panel-tabs button");
+  for (var j = 0; j < btns.length; j++) btns[j].classList.remove("active");
+  if (btn) btn.classList.add("active");
+  if (tabId === "tab-img-overview") renderImgOverview();
+  if (tabId === "tab-img-delete") renderImgDeleteTable();
+}
+
+/* === Upload === */
+function setupImgDrop(zoneId, inputId) {
+  var zone = document.getElementById(zoneId);
+  zone.addEventListener("click", function() { document.getElementById(inputId).click(); });
+  zone.addEventListener("dragover", function(e) { e.preventDefault(); zone.style.background = "#f0f4ff"; });
+  zone.addEventListener("dragleave", function() { zone.style.background = ""; });
+  zone.addEventListener("drop", function(e) {
+    e.preventDefault(); zone.style.background = "";
+    var files = e.dataTransfer.files;
+    processImageFiles(files, document.getElementById(inputId).dataset.pt || "Standard");
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  if (document.getElementById("img-drop-std")) {
+    setupImgDrop("img-drop-std", "img-input-std");
+    setupImgDrop("img-drop-cust", "img-input-cust");
+  }
+});
+
+async function uploadImages(input, defaultType) {
+  var files = input.files;
+  if (!files.length) return;
+  var productType = defaultType;
+  if (defaultType === "Standard") {
+    productType = document.getElementById("img-std-type").value;
+  }
+  var statusId = defaultType === "Customization" ? "img-upload-cust-status" : "img-upload-std-status";
+  var status = document.getElementById(statusId);
+
+  // Build images array (batch upload)
+  var images = [];
+  status.textContent = "读取 " + files.length + " 个文件中...";
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var sku = f.name.replace(/\.[^.]+$/, "");
+    try {
+      var base64 = await fileToBase64(f);
+      images.push({ sku: sku, image: base64, productType: productType, fileType: f.name.split(".").pop() });
+      // Also keep in-memory cache
+      imageCache[sku] = URL.createObjectURL(f);
+      if (!skuTypes[sku]) skuTypes[sku] = productType;
+    } catch(e) {
+      images.push({ sku: sku, image: "", productType: productType, error: "read failed: " + e.message });
+    }
+  }
+
+  // Batch upload to server
+  status.textContent = "上传 " + images.length + " 张到服务器...";
+  try {
+    var r = await fetch(IMG_API + "/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: images })
+    });
+    var d = await r.json();
+
+    // Build detailed status
+    var okCount = d.ok_count || 0;
+    var failCount = d.fail_count || 0;
+    var results = d.results || [];
+    var html = '<b>完成! 成功 ' + okCount + ' 张, 失败 ' + failCount + ' 张</b>';
+    if (failCount > 0 && results.length > 0) {
+      html += '<div style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;">';
+      html += '<table style="width:100%;font-size:11px;"><tr><th>SKU</th><th>错误原因</th></tr>';
+      for (var j = 0; j < results.length; j++) {
+        if (!results[j].ok) {
+          html += '<tr><td><code>' + results[j].sku + '</code></td><td style="color:#dc2626;">' + (results[j].error || "unknown") + '</td></tr>';
+        }
+      }
+      html += '</table></div>';
+    }
+    status.innerHTML = html;
+  } catch(e) {
+    status.innerHTML = '<b style="color:#dc2626;">上传失败: ' + e.message + '</b>';
+  }
+  input.value = "";
+  if (currentWave) renderWave(currentWave);
+}
+
+function fileToBase64(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function() {
+      var base64 = reader.result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* === Overview === */
+async function renderImgOverview() {
+  var r = await fetch(IMG_API + "/overview");
+  var d = await r.json();
+  var data = d.data;
+  document.getElementById("img-ov-total").textContent = data.total_skus;
+  document.getElementById("img-ov-has").textContent = data.has_image;
+  document.getElementById("img-ov-miss").textContent = data.missing_image;
+  var rate = data.total_skus > 0 ? Math.round(data.has_image / data.total_skus * 100) : 0;
+  document.getElementById("img-ov-rate").textContent = rate + "%";
+
+  var typeFilter = document.getElementById("img-ov-type").value;
+  var showFilter = document.getElementById("img-ov-filter").value;
+  var list = [];
+  if (showFilter === "missing" || showFilter === "all") list = list.concat(data.missing_list.map(function(x) { x.hasImg = false; return x; }));
+  if (showFilter === "has" || showFilter === "all") list = list.concat(data.has_list.map(function(x) { x.hasImg = true; return x; }));
+  if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
+
+  document.getElementById("img-ov-count").textContent = list.length + " 条";
+  var tbody = document.getElementById("img-ov-tbody");
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function(x) {
+    var statusHtml = x.hasImg ? '<span style="color:#16a34a;">✅ 有图</span>' : '<span style="color:#dc2626;">❌ 缺图</span>';
+    return '<tr><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.maintainDate + '</td><td>' + statusHtml + '</td></tr>';
+  }).join("");
+}
+
+function exportMissingSkus() {
+  var rows = [];
+  var tbody = document.getElementById("img-ov-tbody");
+  var trs = tbody.querySelectorAll("tr");
+  for (var i = 0; i < trs.length; i++) {
+    var cells = trs[i].querySelectorAll("td");
+    if (cells.length >= 4 && cells[3].textContent.indexOf("缺图") >= 0) {
+      rows.push(cells[0].textContent.trim() + "," + cells[1].textContent.trim());
+    }
+  }
+  if (rows.length === 0) { alert("没有缺图的SKU"); return; }
+  var text = "SKU,类型\n" + rows.join("\n");
+  var blob = new Blob([text], {type: "text/csv"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "missing_images_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click();
+}
+
+/* === Delete === */
+var imgSelectedForDelete = {};
+function toggleAllImgDel(cb) {
+  var cbs = document.querySelectorAll("#img-del-tbody input[type=checkbox]");
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = cb.checked;
+    var sku = cbs[i].closest("tr").querySelector("code").textContent;
+    if (cb.checked) imgSelectedForDelete[sku] = true; else delete imgSelectedForDelete[sku];
+  }
+}
+function toggleImgDel(sku, checked) {
+  if (checked) imgSelectedForDelete[sku] = true; else delete imgSelectedForDelete[sku];
+}
+
+async function renderImgDeleteTable() {
+  var typeFilter = document.getElementById("img-del-type").value;
+  var search = (document.getElementById("img-del-search").value || "").toLowerCase();
+  var params = [];
+  if (typeFilter) params.push("productType=" + typeFilter);
+  if (search) params.push("search=" + search);
+  var r = await fetch(IMG_API + "/list?" + params.join("&"));
+  var d = await r.json();
+  var list = d.data || [];
+  document.getElementById("img-del-count").textContent = list.length + " 条";
+  imgSelectedForDelete = {};
+  document.getElementById("img-del-select-all").checked = false;
+  var tbody = document.getElementById("img-del-tbody");
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(function(x) {
+    var sizeKB = Math.round(x.size / 1024);
+    return '<tr><td><input type="checkbox" onchange="toggleImgDel(\'' + x.sku + '\',this.checked)"></td><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.fileName + '</td><td>' + sizeKB + 'KB</td><td>' + x.mtime + '</td></tr>';
+  }).join("");
+}
+
+async function batchDeleteImages() {
+  var list = Object.keys(imgSelectedForDelete);
+  if (list.length === 0) { alert("请先勾选要删除的图片"); return; }
+  if (!confirm("确认删除 " + list.length + " 张图片？")) return;
+  var r = await fetch(IMG_API + "/delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ skus: list })
+  });
+  var d = await r.json();
+  alert("已删除 " + (d.deleted || 0) + " 张");
+  renderImgDeleteTable();
+}
+</script>
+</body>
+</html>
