@@ -116,19 +116,6 @@ body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); col
 </head>
 <body>
 
-<!-- Login Overlay -->
-
-
-<!-- Change Password Modal -->
-
-
-<!-- Admin User Management Modal -->
-
-
-<!-- Main Content -->
-
-
-
 <div class="header">
   <div>
     <h1>📦 POD Wave Viewer</h1>
@@ -148,7 +135,6 @@ body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); col
 
 <input type="file" id="file-import" accept=".xlsx,.xls" class="hidden" onchange="importExcel(this)">
 <input type="file" id="image-import" accept="image/*" class="hidden" multiple onchange="loadImages(this)">
-<input type="file" id="std-image-import" accept="image/*" class="hidden" multiple onchange="importStdImages(this)">
 
 <div class="container" style="flex-shrink:0;">
   <!-- Scan area -->
@@ -473,14 +459,25 @@ async function searchWave() {
 
     buildWaveMap();
     document.getElementById('import-status').textContent = `☁️ WMS: ${details.length}行 · ${Object.keys(waveMap).length}Wave`;
-    document.getElementById('data-status').innerHTML = `<span class="status-badge status-found">${allRows.length} rows · ${Object.keys(waveMap).length} waves</span>`;
 
-    // 再查找
-    const refoundKey = Object.keys(waveMap).find(k => k.toLowerCase() === input.toLowerCase());
-    if (refoundKey) {
-      currentWave = refoundKey;
-      renderWave(refoundKey);
-    }
+    // 先加载 IndexedDB 图片缓存，再渲染
+    loadAllFromDB().then(persisted => {
+      let hitCount = 0;
+      for (const r of allRows) {
+        if (!imageCache[r.sku] && persisted[r.sku]) {
+          imageCache[r.sku] = persisted[r.sku];
+          hitCount++;
+        }
+      }
+      document.getElementById('data-status').innerHTML = `<span class="status-badge status-found">${allRows.length} rows · ${Object.keys(waveMap).length} waves</span>`;
+
+      // 再查找并渲染
+      const refoundKey = Object.keys(waveMap).find(k => k.toLowerCase() === input.toLowerCase());
+      if (refoundKey) {
+        currentWave = refoundKey;
+        renderWave(refoundKey);
+      }
+    });
   } catch(e) {
     document.getElementById('import-status').textContent = '';
     document.getElementById('summary-row').innerHTML = `<div class="summary-card"><div class="val" style="color:var(--red);">!</div><div class="lbl">加载失败</div></div>`;
@@ -561,7 +558,7 @@ function renderWave(waveNo) {
     for (let i = 0; i < maxSkus; i++) {
       if (i < skus.length) {
         const s = skus[i];
-        const imgSrc = imageCache[s.sku] || '/image/' + s.sku + '.png';
+        const imgSrc = imageCache[s.sku] || 'https://api.swaner.vip/image/' + s.sku;
         const imgHtml = imgSrc
           ? '<img src="'+imgSrc+'" alt="'+s.sku+'" loading="lazy" onclick="event.stopPropagation();openLightbox(\''+imgSrc+'\')" style="width:70px;height:70px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;">'
           : '<span style="font-size:10px;color:#94a3b8;">无图</span>';
@@ -1241,9 +1238,10 @@ async function uploadImages(input, defaultType) {
     try {
       var base64 = await fileToBase64(f);
       images.push({ sku: sku, image: base64, productType: productType, fileType: f.name.split(".").pop() });
-      // Also keep in-memory cache
+      // Also keep in-memory cache + persist to IndexedDB
       imageCache[sku] = URL.createObjectURL(f);
       if (!skuTypes[sku]) skuTypes[sku] = productType;
+      saveImageToDB(sku, f, productType).catch(function(){});
     } catch(e) {
       images.push({ sku: sku, image: "", productType: productType, error: "read failed: " + e.message });
     }
@@ -1337,7 +1335,6 @@ async function renderImgOverview() {
 
 
 /* === Delete === */
-var imgSelectedForDelete = {};
 function toggleAllImgDel(cb) {
   var cbs = document.querySelectorAll("#img-del-tbody input[type=checkbox]");
   for (var i = 0; i < cbs.length; i++) {

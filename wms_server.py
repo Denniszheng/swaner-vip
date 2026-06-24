@@ -308,13 +308,26 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Serve Image
+    # Serve Image (handles both /image/SKU and /image/SKU.png)
     def _serve_image(self, sku):
         try:
             img_dir = "/opt/swaner/data/images"
+            # 1) Try exact match first (for URLs with extension, e.g. /image/ABC.png)
+            fpath = os.path.join(img_dir, sku)
+            if os.path.isfile(fpath):
+                ext = sku.rsplit(".",1)[-1].lower()
+                ctype = "image/" + ("jpeg" if ext=="jpg" else ext)
+                with open(fpath, "rb") as f: data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "max-age=86400")
+                self._cors(); self.end_headers()
+                self.wfile.write(data); return
+            # 2) Try appending common extensions (for URLs without extension, e.g. /image/ABC)
+            base = sku
             for ext in ("png","jpg","jpeg","gif","webp"):
-                fpath = os.path.join(img_dir, f"{sku}.{ext}")
-                if os.path.exists(fpath):
+                fpath = os.path.join(img_dir, f"{base}.{ext}")
+                if os.path.isfile(fpath):
                     with open(fpath, "rb") as f: data = f.read()
                     ctype = "image/" + ("jpeg" if ext=="jpg" else ext)
                     self.send_response(200)
