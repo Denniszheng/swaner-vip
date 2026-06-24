@@ -1131,16 +1131,10 @@ searchWave = async function() {
 <p style="font-size:13px;color:#64748b;margin-bottom:12px;">选择图片文件（文件名 = SKU名称），自动匹配 Standard/Accessories，新SKU自动加入Master</p>
 <div class="upload-zone" id="img-drop-std" style="border:2px dashed #2563eb;border-radius:12px;padding:30px;text-align:center;cursor:pointer;margin-bottom:12px;">
 <i class="bi bi-cloud-upload" style="font-size:2rem;color:#2563eb;"></i>
-<div style="margin-top:8px;">拖拽或点击选择 Standard / Accessories 图片</div>
+<div style="margin-top:8px;">拖拽或点击选择图片</div>
 <div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
 </div>
 <input type="file" id="img-input-std" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Standard')">
-<div style="margin-bottom:8px;">
-<select id="img-std-type" style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
-<option value="Standard">类型: Standard</option>
-<option value="Accessories">类型: Accessories</option>
-</select>
-</div>
 <div id="img-upload-std-status" style="font-size:12px;color:#64748b;"></div>
 </div>
 
