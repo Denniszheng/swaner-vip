@@ -1134,7 +1134,7 @@ searchWave = async function() {
 <div style="margin-top:8px;">拖拽或点击选择图片</div>
 <div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
 </div>
-<input type="file" id="img-input-std" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Standard')">
+<input type="file" id="img-input-std" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Product')">
 <div id="img-upload-std-status" style="font-size:12px;color:#64748b;"></div>
 </div>
 
@@ -1146,7 +1146,7 @@ searchWave = async function() {
 <div style="margin-top:8px;">拖拽或点击选择 Customization 图片</div>
 <div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
 </div>
-<input type="file" id="img-input-cust" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Customization')">
+<input type="file" id="img-input-cust" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Accessories')">
 <div id="img-upload-cust-status" style="font-size:12px;color:#64748b;"></div>
 </div>
 
@@ -1230,10 +1230,7 @@ async function uploadImages(input, defaultType) {
   var files = input.files;
   if (!files.length) return;
   var productType = defaultType;
-  if (defaultType === "Standard") {
-    productType = document.getElementById("img-std-type").value;
-  }
-  var statusId = defaultType === "Customization" ? "img-upload-cust-status" : "img-upload-std-status";
+  var statusId = "img-upload-std-status";
   var status = document.getElementById(statusId);
 
   // Build images array (batch upload)
