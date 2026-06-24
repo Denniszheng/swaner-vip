@@ -561,7 +561,7 @@ function renderWave(waveNo) {
     for (let i = 0; i < maxSkus; i++) {
       if (i < skus.length) {
         const s = skus[i];
-        const imgSrc = imageCache[s.sku] || '';
+        const imgSrc = imageCache[s.sku] || 'https://api.swaner.vip/image/' + s.sku + '.png';
         const imgHtml = imgSrc
           ? '<img src="'+imgSrc+'" alt="'+s.sku+'" loading="lazy" onclick="event.stopPropagation();openLightbox(\''+imgSrc+'\')" style="width:70px;height:70px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;cursor:zoom-in;">'
           : '<span style="font-size:10px;color:#94a3b8;">无图</span>';
