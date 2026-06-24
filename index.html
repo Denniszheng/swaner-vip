@@ -1154,17 +1154,16 @@ searchWave = async function() {
 <div class="tab-content" id="tab-img-overview">
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
 <div class="stat-card-mini"><div class="val" id="img-ov-total">-</div><div class="lbl">SKU总数</div></div>
-<div class="stat-card-mini"><div class="val" id="img-ov-has">-</div><div class="lbl">已有图片</div></div>
-<div class="stat-card-mini"><div class="val" id="img-ov-miss" style="color:#dc2626;">-</div><div class="lbl">缺少图片</div></div>
-<div class="stat-card-mini"><div class="val" id="img-ov-rate">-</div><div class="lbl">覆盖率</div></div>
+<div class="stat-card-mini"><div class="val" id="img-ov-product">-</div><div class="lbl">产品SKU</div></div>
+<div class="stat-card-mini"><div class="val" id="img-ov-accessories">-</div><div class="lbl">配件SKU</div></div>
 </div>
 <div class="filter-bar">
-<select id="img-ov-type" onchange="renderImgOverview()"><option value="">全部类型</option><option value="Standard">Standard</option><option value="Accessories">Accessories</option><option value="Customization">Customization</option></select>
-<select id="img-ov-filter" onchange="renderImgOverview()"><option value="missing">仅显示缺图</option><option value="all">全部显示</option><option value="has">仅显示有图</option></select>
-<button onclick="exportMissingSkus()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">📋 导出缺图清单</button>
+<select id="img-ov-type" onchange="renderImgOverview()"><option value="">全部类型</option><option value="Product">产品</option><option value="Accessories">配件</option></select>
+<input type="text" id="img-ov-sku" placeholder="搜索SKU..." oninput="renderImgOverview()" style="width:140px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+<input type="date" id="img-ov-date" onchange="renderImgOverview()" style="width:140px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;" title="按上传日期筛选">
 <span id="img-ov-count" style="font-size:12px;color:#64748b;"></span>
 </div>
-<div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>图片状态</th></tr></thead><tbody id="img-ov-tbody"></tbody></table></div>
+<div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>大小</th></tr></thead><tbody id="img-ov-tbody"></tbody></table></div>
 </div>
 
 <!-- Tab 4: Delete -->
@@ -1310,17 +1309,18 @@ async function renderImgOverview() {
   var d = await r.json();
   var data = d.data;
   document.getElementById("img-ov-total").textContent = data.total_skus;
-  document.getElementById("img-ov-has").textContent = data.has_image;
-  document.getElementById("img-ov-miss").textContent = data.missing_image;
-  var rate = data.total_skus > 0 ? Math.round(data.has_image / data.total_skus * 100) : 0;
-  document.getElementById("img-ov-rate").textContent = rate + "%";
+  var productCount = 0, accCount = 0;
+  data.has_list.forEach(function(x) { if (x.productType === 'Accessories') accCount++; else productCount++; });
+  document.getElementById("img-ov-product").textContent = productCount;
+  document.getElementById("img-ov-accessories").textContent = accCount;
 
   var typeFilter = document.getElementById("img-ov-type").value;
-  var showFilter = document.getElementById("img-ov-filter").value;
-  var list = [];
-  if (showFilter === "missing" || showFilter === "all") list = list.concat(data.missing_list.map(function(x) { x.hasImg = false; return x; }));
-  if (showFilter === "has" || showFilter === "all") list = list.concat(data.has_list.map(function(x) { x.hasImg = true; return x; }));
+  var skuFilter = (document.getElementById("img-ov-sku").value || "").toLowerCase();
+  var dateFilter = document.getElementById("img-ov-date").value;
+  var list = data.has_list || [];
   if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
+  if (skuFilter) list = list.filter(function(x) { return x.sku.toLowerCase().indexOf(skuFilter) !== -1; });
+  if (dateFilter) list = list.filter(function(x) { return x.maintainDate >= dateFilter; });
 
   document.getElementById("img-ov-count").textContent = list.length + " 条";
   var tbody = document.getElementById("img-ov-tbody");
@@ -1329,29 +1329,12 @@ async function renderImgOverview() {
     return;
   }
   tbody.innerHTML = list.map(function(x) {
-    var statusHtml = x.hasImg ? '<span style="color:#16a34a;">✅ 有图</span>' : '<span style="color:#dc2626;">❌ 缺图</span>';
-    return '<tr><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.maintainDate + '</td><td>' + statusHtml + '</td></tr>';
+    var sizeKB = x.size ? Math.round(x.size / 1024) + 'KB' : '-';
+    return '<tr><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.maintainDate + '</td><td>' + sizeKB + '</td></tr>';
   }).join("");
 }
 
-function exportMissingSkus() {
-  var rows = [];
-  var tbody = document.getElementById("img-ov-tbody");
-  var trs = tbody.querySelectorAll("tr");
-  for (var i = 0; i < trs.length; i++) {
-    var cells = trs[i].querySelectorAll("td");
-    if (cells.length >= 4 && cells[3].textContent.indexOf("缺图") >= 0) {
-      rows.push(cells[0].textContent.trim() + "," + cells[1].textContent.trim());
-    }
-  }
-  if (rows.length === 0) { alert("没有缺图的SKU"); return; }
-  var text = "SKU,类型\n" + rows.join("\n");
-  var blob = new Blob([text], {type: "text/csv"});
-  var a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "missing_images_" + new Date().toISOString().slice(0,10) + ".csv";
-  a.click();
-}
+
 
 /* === Delete === */
 var imgSelectedForDelete = {};
