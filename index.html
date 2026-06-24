@@ -1265,15 +1265,24 @@ async function uploadImages(input, defaultType) {
     var failCount = d.fail_count || 0;
     var results = d.results || [];
     var html = '<b>完成! 成功 ' + okCount + ' 张, 失败 ' + failCount + ' 张</b>';
-    if (failCount > 0 && results.length > 0) {
-      html += '<div style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;">';
-      html += '<table style="width:100%;font-size:11px;"><tr><th>SKU</th><th>错误原因</th></tr>';
+    if (results.length > 0) {
+      var newCount = 0, updateCount = 0;
       for (var j = 0; j < results.length; j++) {
+        if (results[j].ok && results[j].status === 'new') newCount++;
+        if (results[j].ok && results[j].status === 'updated') updateCount++;
+      }
+      if (updateCount > 0) html += ' · <span style="color:#f59e0b;">已覆盖 ' + updateCount + ' 张</span>';
+      if (newCount > 0) html += ' · <span style="color:#16a34a;">新增 ' + newCount + ' 张</span>';
+      if (failCount > 0) {
+        html += '<div style="margin-top:8px;max-height:120px;overflow-y:auto;font-size:11px;">';
+        html += '<table style="width:100%;font-size:11px;"><tr><th>SKU</th><th>错误原因</th></tr>';
+        for (var j = 0; j < results.length; j++) {
         if (!results[j].ok) {
           html += '<tr><td><code>' + results[j].sku + '</code></td><td style="color:#dc2626;">' + (results[j].error || "unknown") + '</td></tr>';
         }
       }
       html += '</table></div>';
+      }
     }
     status.innerHTML = html;
   } catch(e) {
