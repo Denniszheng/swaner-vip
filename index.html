@@ -109,9 +109,9 @@ body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); col
 .sku-panel .close-btn{background:none;border:none;font-size:22px;cursor:pointer;color:#94a3b8}
 .sku-panel .empty-state{text-align:center;padding:40px;color:#94a3b8}
 .sku-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
-.sku-badge.Standard{background:#dbeafe;color:#1e40af}
+.sku-badge.Product{background:#dbeafe;color:#1e40af}
 .sku-badge.Accessories{background:#fef3c7;color:#92400e}
-.sku-badge.Customization{background:#fce7f3;color:#9d174d}
+
 .upload-zone:hover{background:#f8fafc;}</style>
 </head>
 <body>
@@ -460,10 +460,9 @@ async function searchWave() {
     for (const d of details) {
       const orderNo = d.orderNo || '';
       const sku = d.sku || '';
-      let pType = d.productType || 'Customization';
-      if (pType === '普品' || pType === 'Standard' || pType === 'standard') pType = 'Standard';
-      else if (pType === '配件' || pType === 'Accessories' || pType === 'accessories') pType = 'Accessories';
-      else if (pType === '定制品' || pType === 'Customization' || pType === 'customization') pType = 'Customization';
+      let pType = d.productType || 'Product';
+      if (pType === '配件' || pType === 'Accessories' || pType === 'accessories') pType = 'Accessories';
+      else if (pType === '定制品' || pType === 'Customization' || pType === 'customization' || pType === 'Standard' || pType === 'standard' || pType === '普品') pType = 'Product';
       const qty = parseInt(d.qty) || 1;
       const trackingNo = d.trackingNo || '';
       allRows.push({ orderNo, waveNo: input, trackingNo, sku, qty, productType: pType, sheetUrl: d.sheetUrl || '' });
@@ -541,8 +540,8 @@ function renderWave(waveNo) {
 
   // Type colors
   function typeBadge(pt) {
-    var color = pt==='Accessories'?'#f59e0b':pt==='Standard'?'#3b82f6':'#8b5cf6';
-    var bg = pt==='Accessories'?'#fef3c7':pt==='Standard'?'#dbeafe':'#f3e8ff';
+    var color = pt==='Accessories'?'#f59e0b':'#3b82f6';
+    var bg = pt==='Accessories'?'#fef3c7':'#dbeafe';
     return '<span style="display:inline-block;background:'+bg+';color:'+color+';padding:1px 6px;border-radius:8px;font-size:10px;font-weight:600;">'+pt+'</span>';
   }
 
@@ -1120,8 +1119,8 @@ searchWave = async function() {
 <button class="close-btn" onclick="document.getElementById('img-panel-overlay').classList.remove('active')">&times;</button>
 </div>
 <div class="sku-panel-tabs">
-<button class="active" onclick="switchImgTab('tab-img-upload-std',this)">Standard / Accessories 上传</button>
-<button onclick="switchImgTab('tab-img-upload-cust',this)">Customization 上传</button>
+<button class="active" onclick="switchImgTab('tab-img-upload-std',this)">产品 上传</button>
+<button onclick="switchImgTab('tab-img-upload-cust',this)">配件 上传</button>
 <button onclick="switchImgTab('tab-img-overview',this)">📊 概览</button>
 <button onclick="switchImgTab('tab-img-delete',this)">🗑️ 删除</button>
 </div>
