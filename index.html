@@ -1143,7 +1143,7 @@ searchWave = async function() {
 <p style="font-size:13px;color:#64748b;margin-bottom:12px;">选择图片文件（文件名 = SKU名称），新SKU自动匹配到配件类型</p>
 <div class="upload-zone" id="img-drop-cust" style="border:2px dashed #9d174d;border-radius:12px;padding:30px;text-align:center;cursor:pointer;margin-bottom:12px;">
 <i class="bi bi-cloud-upload" style="font-size:2rem;color:#9d174d;"></i>
-<div style="margin-top:8px;">拖拽或点击选择 Customization 图片</div>
+<div style="margin-top:8px;">拖拽或点击选择配件图片</div>
 <div style="font-size:11px;color:#94a3b8;">支持 PNG/JPG/WebP，文件名即SKU代码</div>
 </div>
 <input type="file" id="img-input-cust" accept="image/*" multiple style="display:none;" onchange="uploadImages(this,'Accessories')">
@@ -1230,7 +1230,7 @@ async function uploadImages(input, defaultType) {
   var files = input.files;
   if (!files.length) return;
   var productType = defaultType;
-  var statusId = "img-upload-std-status";
+  var statusId = defaultType === "Accessories" ? "img-upload-cust-status" : "img-upload-std-status";
   var status = document.getElementById(statusId);
 
   // Build images array (batch upload)
