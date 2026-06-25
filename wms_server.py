@@ -2,7 +2,7 @@
 Swaner Server — WMS Proxy + SKU Master API + Static Files
 运行: python3 /opt/swaner/backend/wms_server.py
 """
-import json, os, hashlib, time, hmac, sqlite3
+import json, os, hashlib, time, hmac
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse, parse_qs
@@ -11,14 +11,6 @@ PORT = 9601
 WMS_APP_KEY = "60d2da562ee3492e8bdaaea44c611910"
 WMS_SECRET = "e7f3e07d4f15438da02308fa1ebf90be"
 WMS_BASE_URL = "https://api.xlwms.com"
-DB_PATH = "/opt/swaner/data/sku_master.db"
-
-# ── DB ──
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("CREATE TABLE IF NOT EXISTS sku_master (sku TEXT PRIMARY KEY, product_type TEXT, maintain_date TEXT, source TEXT, status TEXT)")
-    conn.commit()
-    conn.close()
 
 # ── Sign ──
 def make_sign(params, path, secret):
@@ -83,10 +75,6 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == "/health":
             return self._json({"status":"ok","service":"swaner-server"})
-        if u.path == "/sku/list":
-            return self._sku_list(u)
-        if u.path == "/sku/stats":
-            return self._sku_stats()
         if u.path == "/image/list":
             return self._image_list(u)
         if u.path == "/image/overview":
@@ -102,10 +90,6 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path == "/wave-detail":
             return self._wave_detail()
-        if u.path == "/sku/upsert":
-            return self._sku_upsert()
-        if u.path == "/sku/delete":
-            return self._sku_delete()
         if u.path == "/image/upload":
             return self._image_upload()
         self._json({"error":"not found"}, 404)
@@ -129,72 +113,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # ── SKU List ──
-    def _sku_list(self, u):
-        try:
-            qp = parse_qs(u.query)
-            conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
-            where = []; params = []
-            if qp.get("productType"):
-                where.append("product_type=?"); params.append(qp["productType"][0])
-            if qp.get("dateFrom"):
-                where.append("maintain_date>=?"); params.append(qp["dateFrom"][0])
-            if qp.get("dateTo"):
-                where.append("maintain_date<=?"); params.append(qp["dateTo"][0])
-            if qp.get("search"):
-                where.append("sku LIKE ?"); params.append(f"%{qp['search'][0]}%")
-            sql = "SELECT * FROM sku_master" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY maintain_date DESC"
-            rows = conn.execute(sql, params).fetchall()
-            conn.close()
-            data = [{"sku":r["sku"],"productType":r["product_type"],"maintainDate":r["maintain_date"],"source":r["source"],"status":r["status"]} for r in rows]
-            self._json({"data": data, "total": len(data)})
-        except Exception as e:
-            self._json({"error": str(e)}, 500)
-
-    # ── SKU Stats ──
-    def _sku_stats(self):
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            rows = conn.execute("SELECT product_type, maintain_date FROM sku_master").fetchall()
-            conn.close()
-            stats = {"total": len(rows), "standard":0, "accessories":0, "customization":0, "byDate":{}}
-            for pt, md in rows:
-                if pt == "Standard": stats["standard"] += 1
-                elif pt == "Accessories": stats["accessories"] += 1
-                else: stats["customization"] += 1
-                if md: stats["byDate"][md] = stats["byDate"].get(md, 0) + 1
-            self._json({"data": stats})
-        except Exception as e:
-            self._json({"error": str(e)}, 500)
-
-    # ── SKU Upsert ──
-    def _sku_upsert(self):
-        try:
-            body = json.loads(self._read_body())
-            items = body.get("skus", [])
-            if not items: return self._json({"error":"missing skus"}, 400)
-            today = time.strftime("%Y-%m-%d")
-            conn = sqlite3.connect(DB_PATH)
-            for it in items:
-                conn.execute("INSERT OR REPLACE INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
-                    (it["sku"], it.get("productType","Customization"), it.get("maintainDate",today), it.get("source","manual"), it.get("status","")))
-            conn.commit(); conn.close()
-            self._json({"ok": True, "count": len(items)})
-        except Exception as e:
-            self._json({"error": str(e)}, 500)
-
-    # ── SKU Delete ──
-    def _sku_delete(self):
-        try:
-            body = json.loads(self._read_body())
-            skus = body.get("skus", [])
-            if not skus: return self._json({"error":"missing skus"}, 400)
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(f"DELETE FROM sku_master WHERE sku IN ({','.join(['?']*len(skus))})", skus)
-            deleted = conn.total_changes; conn.commit(); conn.close()
-            self._json({"ok": True, "deleted": deleted})
-        except Exception as e:
-            self._json({"error": str(e)}, 500)
 
 # Image Upload
     def _image_upload(self):
@@ -372,13 +290,8 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         print(f"[{time.strftime('%H:%M:%S')}] {args[0] if args else ''}")
 
-    def log_message(self, format, *args):
-        print(f"[{time.strftime('%H:%M:%S')}] {args[0] if args else ''}")
-
 
 if __name__ == "__main__":
-    init_db()
     print(f"Swaner Server starting on 0.0.0.0:{PORT}")
-    print(f"  DB: {DB_PATH}")
     print(f"  WMS: {WMS_BASE_URL}")
     HTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
