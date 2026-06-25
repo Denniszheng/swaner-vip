@@ -207,13 +207,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error":"missing images array"}, 400)
             img_dir = "/opt/swaner/data/images"
             os.makedirs(img_dir, exist_ok=True)
-            today = time.strftime("%Y-%m-%d")
             import base64 as b64
             results = []
             for img in images:
                 sku = (img.get("sku") or "").strip()
                 base64_data = img.get("image","")
-                product_type = img.get("productType","Customization")
+                product_type = img.get("productType","Product")
                 if not sku:
                     results.append({"sku":"","ok":False,"error":"SKU name empty"}); continue
                 if not base64_data:
@@ -228,12 +227,9 @@ class Handler(BaseHTTPRequestHandler):
                     if fsize < 100:
                         os.remove(filepath)
                         results.append({"sku":sku,"ok":False,"error":"file too small (%d bytes)" % fsize}); continue
-                    conn = sqlite3.connect(DB_PATH)
-                    exists = conn.execute("SELECT 1 FROM sku_master WHERE sku=?", (sku,)).fetchone()
-                    if not exists:
-                        conn.execute("INSERT INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
-                            (sku, product_type, today, "manual", ""))
-                    conn.commit(); conn.close()
+                    # Write .type file so overview/delete can read the product type
+                    with open(os.path.join(img_dir, f"{sku}.type"), "w") as tf:
+                        tf.write(product_type)
                     results.append({"sku":sku,"ok":True,"size":fsize})
                 except Exception as e:
                     results.append({"sku":sku,"ok":False,"error":str(e)[:100]})
