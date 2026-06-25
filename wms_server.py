@@ -241,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image List
+    # Image List (only actual image files, not .type or other metadata)
     def _image_list(self, u):
         try:
             img_dir = "/opt/swaner/data/images"
@@ -249,7 +249,10 @@ class Handler(BaseHTTPRequestHandler):
             qp = parse_qs(u.query)
             filter_pt = qp.get("productType", [None])[0]
             filter_search = (qp.get("search", [""])[0] or "").lower()
-            files = [f for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]
+            IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
+            files = [f for f in os.listdir(img_dir)
+                     if os.path.isfile(os.path.join(img_dir, f))
+                     and os.path.splitext(f)[1].lower() in IMG_EXTS]
             result = []
             for f in files:
                 sku = f.rsplit(".",1)[0]
@@ -269,14 +272,15 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image Overview
+    # Image Overview (only count actual image files)
     def _image_overview(self):
         try:
             img_dir = "/opt/swaner/data/images"
             os.makedirs(img_dir, exist_ok=True)
+            IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
             img_skus = set()
             for f in os.listdir(img_dir):
-                if os.path.isfile(os.path.join(img_dir, f)):
+                if os.path.isfile(os.path.join(img_dir, f)) and os.path.splitext(f)[1].lower() in IMG_EXTS:
                     img_skus.add(f.rsplit(".",1)[0])
             conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
             sku_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master ORDER BY product_type, sku").fetchall()
@@ -291,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image Delete
+    # Image Delete (also clean up .type metadata files)
     def _image_delete(self):
         try:
             body = json.loads(self._read_body())
@@ -300,10 +304,10 @@ class Handler(BaseHTTPRequestHandler):
             img_dir = "/opt/swaner/data/images"
             deleted = 0
             for sku in skus:
-                for ext in ("png","jpg","jpeg","gif","webp"):
+                for ext in ("png","jpg","jpeg","gif","webp","type"):
                     fpath = os.path.join(img_dir, f"{sku}.{ext}")
                     if os.path.exists(fpath):
-                        os.remove(fpath); deleted += 1; break
+                        os.remove(fpath); deleted += 1
             self._json({"ok": True, "deleted": deleted})
         except Exception as e:
             self._json({"error": str(e)}, 500)
