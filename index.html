@@ -1160,7 +1160,7 @@ searchWave = async function() {
 <input type="date" id="img-ov-date" onchange="renderImgOverview()" style="width:140px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;" title="按上传日期筛选">
 <span id="img-ov-count" style="font-size:12px;color:#64748b;"></span>
 </div>
-<div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>大小</th></tr></thead><tbody id="img-ov-tbody"></tbody></table></div>
+<div style="max-height:50vh;overflow-y:auto;"><table><thead><tr><th>SKU</th><th>类型</th><th>维护日期</th><th>图片状态</th></tr></thead><tbody id="img-ov-tbody"></tbody></table></div>
 </div>
 
 <!-- Tab 4: Delete -->
@@ -1171,7 +1171,7 @@ searchWave = async function() {
 <button onclick="batchDeleteImages()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">批量删除选中</button>
 <span id="img-del-count" style="font-size:12px;color:#64748b;"></span>
 </div>
-<div style="max-height:48vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="img-del-select-all" onchange="toggleAllImgDel(this)"></th><th>SKU</th><th>类型</th><th>文件名</th><th>大小</th><th>上传时间</th></tr></thead><tbody id="img-del-tbody"></tbody></table></div>
+<div style="max-height:48vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="img-del-select-all" onchange="toggleAllImgDel(this)"></th><th>SKU</th><th>类型</th><th>维护日期</th><th>图片状态</th></tr></thead><tbody id="img-del-tbody"></tbody></table></div>
 </div>
 
 </div>
@@ -1306,16 +1306,27 @@ async function renderImgOverview() {
   var r = await fetch(IMG_API + "/overview");
   var d = await r.json();
   var data = d.data;
-  document.getElementById("img-ov-total").textContent = data.total_skus;
+
+  // Merge has_list + missing_list — overview shows ALL uploaded SKUs
+  var hasList = (data.has_list || []).map(function(x) { x.hasImg = true; return x; });
+  var missList = (data.missing_list || []).map(function(x) { x.hasImg = false; return x; });
+  var allSkus = hasList.concat(missList);
+  // Sort: with images first, then by SKU
+  allSkus.sort(function(a,b) {
+    if (a.hasImg !== b.hasImg) return a.hasImg ? -1 : 1;
+    return a.sku.localeCompare(b.sku);
+  });
+
+  document.getElementById("img-ov-total").textContent = allSkus.length;
   var productCount = 0, accCount = 0;
-  data.has_list.forEach(function(x) { if (x.productType === 'Accessories') accCount++; else productCount++; });
+  allSkus.forEach(function(x) { if (x.productType === 'Accessories') accCount++; else productCount++; });
   document.getElementById("img-ov-product").textContent = productCount;
   document.getElementById("img-ov-accessories").textContent = accCount;
 
   var typeFilter = document.getElementById("img-ov-type").value;
   var skuFilter = (document.getElementById("img-ov-sku").value || "").toLowerCase();
   var dateFilter = document.getElementById("img-ov-date").value;
-  var list = data.has_list || [];
+  var list = allSkus;
   if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
   if (skuFilter) list = list.filter(function(x) { return x.sku.toLowerCase().indexOf(skuFilter) !== -1; });
   if (dateFilter) list = list.filter(function(x) { return x.maintainDate >= dateFilter; });
@@ -1327,14 +1338,16 @@ async function renderImgOverview() {
     return;
   }
   tbody.innerHTML = list.map(function(x) {
-    var sizeKB = x.size ? Math.round(x.size / 1024) + 'KB' : '-';
-    return '<tr><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.maintainDate + '</td><td>' + sizeKB + '</td></tr>';
+    var statusHtml = x.hasImg ? '<span style="color:#16a34a;">✅ 有图</span>' : '<span style="color:#dc2626;">❌ 缺图</span>';
+    return '<tr><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + (x.maintainDate || '-') + '</td><td>' + statusHtml + '</td></tr>';
   }).join("");
 }
 
 
 
 /* === Delete === */
+// Delete tab uses the SAME data as Overview (/image/overview)
+var imgSelectedForDelete = {};
 function toggleAllImgDel(cb) {
   var cbs = document.querySelectorAll("#img-del-tbody input[type=checkbox]");
   for (var i = 0; i < cbs.length; i++) {
@@ -1348,40 +1361,53 @@ function toggleImgDel(sku, checked) {
 }
 
 async function renderImgDeleteTable() {
+  var r = await fetch(IMG_API + "/overview");
+  var d = await r.json();
+  var data = d.data;
+
+  // Same merged list as overview
+  var hasList = (data.has_list || []).map(function(x) { x.hasImg = true; return x; });
+  var missList = (data.missing_list || []).map(function(x) { x.hasImg = false; return x; });
+  var allSkus = hasList.concat(missList);
+  allSkus.sort(function(a,b) {
+    if (a.hasImg !== b.hasImg) return a.hasImg ? -1 : 1;
+    return a.sku.localeCompare(b.sku);
+  });
+
   var typeFilter = document.getElementById("img-del-type").value;
   var search = (document.getElementById("img-del-search").value || "").toLowerCase();
-  var params = [];
-  if (typeFilter) params.push("productType=" + typeFilter);
-  if (search) params.push("search=" + search);
-  var r = await fetch(IMG_API + "/list?" + params.join("&"));
-  var d = await r.json();
-  var list = d.data || [];
+  var list = allSkus;
+  if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
+  if (search) list = list.filter(function(x) { return x.sku.toLowerCase().indexOf(search) !== -1; });
+
   document.getElementById("img-del-count").textContent = list.length + " 条";
   imgSelectedForDelete = {};
   document.getElementById("img-del-select-all").checked = false;
   var tbody = document.getElementById("img-del-tbody");
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-state">无SKU数据</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(function(x) {
-    var sizeKB = Math.round(x.size / 1024);
-    return '<tr><td><input type="checkbox" onchange="toggleImgDel(\'' + x.sku + '\',this.checked)"></td><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + x.fileName + '</td><td>' + sizeKB + 'KB</td><td>' + x.mtime + '</td></tr>';
+    var statusHtml = x.hasImg ? '<span style="color:#16a34a;">✅ 有图</span>' : '<span style="color:#dc2626;">❌ 缺图</span>';
+    return '<tr><td><input type="checkbox" onchange="toggleImgDel(\'' + x.sku + '\',this.checked)"></td><td><code>' + x.sku + '</code></td><td><span class="sku-badge ' + x.productType + '">' + x.productType + '</span></td><td>' + (x.maintainDate || '-') + '</td><td>' + statusHtml + '</td></tr>';
   }).join("");
 }
 
 async function batchDeleteImages() {
   var list = Object.keys(imgSelectedForDelete);
-  if (list.length === 0) { alert("请先勾选要删除的图片"); return; }
-  if (!confirm("确认删除 " + list.length + " 张图片？")) return;
+  if (list.length === 0) { alert("请先勾选要删除的SKU"); return; }
+  if (!confirm("确认删除 " + list.length + " 个SKU及其图片？\n\n此操作不可恢复。")) return;
   var r = await fetch(IMG_API + "/delete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ skus: list })
   });
   var d = await r.json();
-  alert("已删除 " + (d.deleted || 0) + " 张");
+  alert("已删除 " + (d.deleted || 0) + " 个");
+  // Refresh both: delete table AND overview (they're linked)
   renderImgDeleteTable();
+  renderImgOverview();
 }
 </script>
 </body>
