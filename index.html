@@ -1303,7 +1303,7 @@ function fileToBase64(file) {
 
 /* === Overview === */
 async function renderImgOverview() {
-  var r = await fetch(IMG_API + "/overview");
+  var r = await fetch(IMG_API + "/overview?_t=" + Date.now());
   var d = await r.json();
   var data = d.data;
 
@@ -1361,7 +1361,7 @@ function toggleImgDel(sku, checked) {
 }
 
 async function renderImgDeleteTable() {
-  var r = await fetch(IMG_API + "/overview");
+  var r = await fetch(IMG_API + "/overview?_t=" + Date.now());
   var d = await r.json();
   var data = d.data;
 
