@@ -261,11 +261,30 @@ class Handler(BaseHTTPRequestHandler):
                 if sku not in by_sku or ext in IMG_EXTS:
                     by_sku[sku] = {"sku": sku, "fileName": f, "size": stat.st_size,
                         "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))}
+            # Batch-load all known SKUs from DB
+            conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
+            db_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master").fetchall()
+            conn.close()
+            db_map = {r["sku"]: r for r in db_rows}
+
+            # Auto-register SKUs that exist on disk but not in DB
+            today = time.strftime("%Y-%m-%d")
+            missing = [s for s in by_sku if s not in db_map]
+            if missing:
+                conn = sqlite3.connect(DB_PATH)
+                for s in missing:
+                    conn.execute("INSERT OR IGNORE INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
+                        (s, "Product", today, "image", ""))
+                conn.commit(); conn.close()
+                # Re-load
+                conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
+                db_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master").fetchall()
+                conn.close()
+                db_map = {r["sku"]: r for r in db_rows}
+
             result = []
             for sku, entry in by_sku.items():
-                conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
-                row = conn.execute("SELECT product_type, maintain_date FROM sku_master WHERE sku=?", (sku,)).fetchone()
-                conn.close()
+                row = db_map.get(sku)
                 entry["productType"] = row["product_type"] if row else "Unknown"
                 entry["maintainDate"] = row["maintain_date"] if row else ""
                 if filter_pt and entry["productType"] != filter_pt: continue
@@ -284,7 +303,15 @@ class Handler(BaseHTTPRequestHandler):
             for f in os.listdir(img_dir):
                 if os.path.isfile(os.path.join(img_dir, f)):
                     img_skus.add(f.rsplit(".",1)[0])
-            conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
+            # Auto-register filesystem-only SKUs into sku_master
+            conn = sqlite3.connect(DB_PATH)
+            db_skus = set(r[0] for r in conn.execute("SELECT sku FROM sku_master").fetchall())
+            today = time.strftime("%Y-%m-%d")
+            for s in img_skus - db_skus:
+                conn.execute("INSERT OR IGNORE INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
+                    (s, "Product", today, "image", ""))
+            conn.commit()
+            conn.row_factory = sqlite3.Row
             sku_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master ORDER BY product_type, sku").fetchall()
             conn.close()
             has_img = []; missing_img = []
