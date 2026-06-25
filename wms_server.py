@@ -90,6 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._image_list(u)
         if u.path == "/image/overview":
             return self._image_overview()
+        if u.path == "/image/remove":
+            return self._image_remove(u)
         if u.path.startswith("/image/"):
             return self._serve_image(u.path.split("/image/")[1])
         self._json({"error":"not found"}, 404)
@@ -105,8 +107,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._sku_delete()
         if u.path == "/image/upload":
             return self._image_upload()
-        if u.path == "/image/delete":
-            return self._image_delete()
         self._json({"error":"not found"}, 404)
 
     # ── Wave Detail ──
@@ -241,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image List (deduplicate by SKU, prefer actual image file over .type)
+    # Image List (read all SKUs from disk, type from .type file)
     def _image_list(self, u):
         try:
             img_dir = "/opt/swaner/data/images"
@@ -250,85 +250,85 @@ class Handler(BaseHTTPRequestHandler):
             filter_pt = qp.get("productType", [None])[0]
             filter_search = (qp.get("search", [""])[0] or "").lower()
             IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
-            all_files = [f for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]
-            # Group by SKU name, prefer image files over .type
+            all_files = os.listdir(img_dir)
+            # Collect SKU info from both image files and .type files
             by_sku = {}
             for f in all_files:
-                ext = os.path.splitext(f)[1].lower()
-                sku = f.rsplit(".",1)[0] if ext else f
                 fpath = os.path.join(img_dir, f)
+                if not os.path.isfile(fpath): continue
+                ext = os.path.splitext(f)[1].lower()
+                sku = f.rsplit(".",1)[0]
                 stat = os.stat(fpath)
-                if sku not in by_sku or ext in IMG_EXTS:
-                    by_sku[sku] = {"sku": sku, "fileName": f, "size": stat.st_size,
-                        "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))}
-            # Batch-load all known SKUs from DB
-            conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
-            db_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master").fetchall()
-            conn.close()
-            db_map = {r["sku"]: r for r in db_rows}
-
-            # Auto-register SKUs that exist on disk but not in DB
-            today = time.strftime("%Y-%m-%d")
-            missing = [s for s in by_sku if s not in db_map]
-            if missing:
-                conn = sqlite3.connect(DB_PATH)
-                for s in missing:
-                    conn.execute("INSERT OR IGNORE INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
-                        (s, "Product", today, "image", ""))
-                conn.commit(); conn.close()
-                # Re-load
-                conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
-                db_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master").fetchall()
-                conn.close()
-                db_map = {r["sku"]: r for r in db_rows}
-
-            result = []
-            for sku, entry in by_sku.items():
-                row = db_map.get(sku)
-                entry["productType"] = row["product_type"] if row else "Unknown"
-                entry["maintainDate"] = row["maintain_date"] if row else ""
-                if filter_pt and entry["productType"] != filter_pt: continue
-                if filter_search and filter_search not in sku.lower(): continue
-                result.append(entry)
+                mtime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))
+                if ext == ".type":
+                    try:
+                        with open(fpath) as tf: ptype = tf.read().strip()
+                    except: ptype = "Product"
+                    if sku not in by_sku:
+                        by_sku[sku] = {"sku": sku, "fileName": "", "size": 0,
+                            "productType": ptype, "mtime": mtime, "maintainDate": ""}
+                    else:
+                        by_sku[sku]["productType"] = ptype
+                elif ext in IMG_EXTS:
+                    if sku in by_sku:
+                        by_sku[sku].update({"fileName": f, "size": stat.st_size, "mtime": mtime,
+                            "maintainDate": time.strftime("%Y-%m-%d", time.localtime(stat.st_mtime))})
+                    else:
+                        by_sku[sku] = {"sku": sku, "fileName": f, "size": stat.st_size,
+                            "productType": "Product", "mtime": mtime,
+                            "maintainDate": time.strftime("%Y-%m-%d", time.localtime(stat.st_mtime))}
+            result = [e for e in by_sku.values()
+                      if (not filter_pt or e.get("productType") == filter_pt)
+                      and (not filter_search or filter_search in e["sku"].lower())]
             self._json({"data": result, "total": len(result)})
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image Overview
+    # Image Overview (reads type from .type files)
     def _image_overview(self):
         try:
             img_dir = "/opt/swaner/data/images"
             os.makedirs(img_dir, exist_ok=True)
+            IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
+            sku_info = {}  # {sku: {productType, maintainDate}}
             img_skus = set()
             for f in os.listdir(img_dir):
-                if os.path.isfile(os.path.join(img_dir, f)):
-                    img_skus.add(f.rsplit(".",1)[0])
-            # Auto-register filesystem-only SKUs into sku_master
-            conn = sqlite3.connect(DB_PATH)
-            db_skus = set(r[0] for r in conn.execute("SELECT sku FROM sku_master").fetchall())
-            today = time.strftime("%Y-%m-%d")
-            for s in img_skus - db_skus:
-                conn.execute("INSERT OR IGNORE INTO sku_master(sku,product_type,maintain_date,source,status) VALUES(?,?,?,?,?)",
-                    (s, "Product", today, "image", ""))
-            conn.commit()
-            conn.row_factory = sqlite3.Row
-            sku_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master ORDER BY product_type, sku").fetchall()
-            conn.close()
-            has_img = []; missing_img = []
-            for r in sku_rows:
-                entry = {"sku": r["sku"], "productType": r["product_type"], "maintainDate": r["maintain_date"]}
-                if r["sku"] in img_skus: has_img.append(entry)
+                fpath = os.path.join(img_dir, f)
+                if not os.path.isfile(fpath): continue
+                parts = f.rsplit(".",1)
+                sku = parts[0]
+                ext = "." + parts[1] if len(parts) > 1 else ""
+                if ext == ".type":
+                    try:
+                        with open(fpath) as tf:
+                            ptype = tf.read().strip()
+                        if sku not in sku_info: sku_info[sku] = {"productType": "Product", "maintainDate": ""}
+                        sku_info[sku]["productType"] = ptype
+                    except: pass
+                elif ext.lower() in IMG_EXTS:
+                    img_skus.add(sku)
+                    mtime = time.strftime("%Y-%m-%d", time.localtime(os.stat(fpath).st_mtime))
+                    if sku not in sku_info: sku_info[sku] = {"productType": "Product", "maintainDate": ""}
+                    sku_info[sku]["maintainDate"] = mtime
+                elif sku not in sku_info:
+                    sku_info[sku] = {"productType": "Product", "maintainDate": ""}
+            has_img = []
+            missing_img = []
+            for sku, info in sku_info.items():
+                entry = {"sku": sku, "productType": info["productType"], "maintainDate": info.get("maintainDate","")}
+                if sku in img_skus: has_img.append(entry)
                 else: missing_img.append(entry)
-            self._json({"data": {"total_skus": len(sku_rows), "has_image": len(has_img),
+            self._json({"data": {"total_skus": len(sku_info), "has_image": len(has_img),
                 "missing_image": len(missing_img), "missing_list": missing_img, "has_list": has_img}})
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image Delete (also clean up .type metadata files)
-    def _image_delete(self):
+    # Image Delete (GET method, takes skus from query param to bypass Cloudflare WAF)
+    def _image_remove(self, u):
         try:
-            body = json.loads(self._read_body())
-            skus = body.get("skus", [])
+            qp = parse_qs(u.query)
+            skus_raw = qp.get("skus", [""])[0]
+            skus = [s.strip() for s in skus_raw.split(",") if s.strip()]
             if not skus: return self._json({"error":"missing skus"}, 400)
             img_dir = "/opt/swaner/data/images"
             deleted = 0

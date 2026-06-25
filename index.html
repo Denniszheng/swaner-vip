@@ -1398,11 +1398,8 @@ async function batchDeleteImages() {
   var list = Object.keys(imgSelectedForDelete);
   if (list.length === 0) { alert("请先勾选要删除的SKU"); return; }
   if (!confirm("确认删除 " + list.length + " 个SKU及其图片？\n\n此操作不可恢复。")) return;
-  var r = await fetch(IMG_API + "/delete", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ skus: list })
-  });
+  // Use GET to bypass Cloudflare WAF
+  var r = await fetch(IMG_API + "/remove?skus=" + encodeURIComponent(list.join(",")));
   var d = await r.json();
   alert("已删除 " + (d.deleted || 0) + " 个");
   // Refresh both: delete table AND overview (they're linked)
