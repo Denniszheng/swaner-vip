@@ -850,6 +850,11 @@ openDB().then(() => console.log('IndexedDB ready'));
 <input type="text" id="img-del-search" placeholder="搜索SKU..." oninput="renderImgDeleteTable()" style="width:160px;">
 <button onclick="batchDeleteImages()" style="background:#dc2626;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;">批量删除选中</button>
 <span id="img-del-count" style="font-size:12px;color:#64748b;"></span>
+<div class="filter-bar" style="margin-top:4px;">
+	<textarea id="img-del-multi" rows="2" placeholder="粘贴多个SKU精确筛选（换行/逗号/空格分隔）..." style="flex:1;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;min-width:300px;"></textarea>
+	<button onclick="applyMultiFilter()" style="background:#1e293b;color:#fff;padding:6px 14px;border:none;border-radius:6px;cursor:pointer;white-space:nowrap;">🎯 精确筛选</button>
+	<button onclick="clearMultiFilter()" style="background:none;border:1px solid #e2e8f0;padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;font-size:12px;">✕ 清除</button>
+	</div>
 </div>
 <div style="max-height:48vh;overflow-y:auto;"><table><thead><tr><th><input type="checkbox" id="img-del-select-all" onchange="toggleAllImgDel(this)"></th><th>SKU</th><th>类型</th><th>维护日期</th><th>图片状态</th></tr></thead><tbody id="img-del-tbody"></tbody></table></div>
 </div>
@@ -1040,6 +1045,25 @@ function toggleImgDel(sku, checked) {
   if (checked) imgSelectedForDelete[sku] = true; else delete imgSelectedForDelete[sku];
 }
 
+// ── Multi-SKU exact filter ──
+var multiFilterSet = null;
+
+function applyMultiFilter() {
+  var raw = document.getElementById("img-del-multi").value.trim();
+  if (!raw) return;
+  // Parse SKUs: split by newline, comma, or whitespace
+  var skus = raw.split(/[\n\r,\s]+/).filter(function(s) { return s.length > 0; });
+  multiFilterSet = {};
+  for (var i = 0; i < skus.length; i++) { multiFilterSet[skus[i]] = true; }
+  renderImgDeleteTable();
+}
+
+function clearMultiFilter() {
+  document.getElementById("img-del-multi").value = "";
+  multiFilterSet = null;
+  renderImgDeleteTable();
+}
+
 async function renderImgDeleteTable() {
   var r = await fetch(IMG_API + "/overview?_t=" + Date.now());
   var d = await r.json();
@@ -1057,10 +1081,22 @@ async function renderImgDeleteTable() {
   var typeFilter = document.getElementById("img-del-type").value;
   var search = (document.getElementById("img-del-search").value || "").toLowerCase();
   var list = allSkus;
-  if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
-  if (search) list = list.filter(function(x) { return x.sku.toLowerCase().indexOf(search) !== -1; });
+  // Multi-exact filter takes priority
+  if (multiFilterSet) {
+    list = list.filter(function(x) { return multiFilterSet[x.sku]; });
+  } else {
+    if (typeFilter) list = list.filter(function(x) { return x.productType === typeFilter; });
+    if (search) list = list.filter(function(x) { return x.sku.toLowerCase().indexOf(search) !== -1; });
+  }
 
-  document.getElementById("img-del-count").textContent = list.length + " 条";
+  if (multiFilterSet) {
+    var totalPasted = Object.keys(multiFilterSet).length;
+    var notFound = totalPasted - list.length;
+    var extra = notFound > 0 ? ' · <span style=\"color:#dc2626;\">' + notFound + ' 个未匹配</span>' : '';
+    document.getElementById("img-del-count").innerHTML = list.length + ' / ' + totalPasted + ' 条' + extra;
+  } else {
+    document.getElementById("img-del-count").textContent = list.length + " 条";
+  }
   imgSelectedForDelete = {};
   document.getElementById("img-del-select-all").checked = false;
   var tbody = document.getElementById("img-del-tbody");
