@@ -248,10 +248,12 @@ class Handler(BaseHTTPRequestHandler):
             img_dir = "/opt/swaner/data/images"
             deleted = 0
             for sku in skus:
+                found = False
                 for ext in ("png","jpg","jpeg","gif","webp","type"):
                     fpath = os.path.join(img_dir, f"{sku}.{ext}")
                     if os.path.exists(fpath):
-                        os.remove(fpath); deleted += 1
+                        os.remove(fpath); found = True
+                if found: deleted += 1
             self._json({"ok": True, "deleted": deleted})
         except Exception as e:
             self._json({"error": str(e)}, 500)
