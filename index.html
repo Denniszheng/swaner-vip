@@ -452,8 +452,6 @@ async function searchWave() {
       const qty = parseInt(d.qty) || 1;
       const trackingNo = d.trackingNo || '';
       allRows.push({ orderNo, waveNo: input, trackingNo, sku, qty, productType: pType, sheetUrl: d.sheetUrl || '' });
-      // Auto-capture SKU to Master
-      autoCaptureSkus([{sku: sku, productType: pType}]).catch(function(){});
       skuTypes[sku] = pType;
     }
 
