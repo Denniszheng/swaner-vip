@@ -22,25 +22,29 @@ def make_sign(params, path, secret):
     step2 = "".join(f"{k}{val_to_str(params[k])}" for k in sorted_keys)
     return hmac.new(secret.encode(), (secret + path + step2 + secret).encode(), hashlib.sha256).hexdigest().upper()
 
-# ── Product Type ──
-def classify(sku, name):
-    nl = (sku + " " + (name or "")).lower()
-    for kw in ["stand","base","rotatable","display","holder","frame","mount","bracket","hook","hanger","pedestal","chain","22mm","connector","screw","spacer","ring","pin"]:
-        if kw in nl: return "Accessories"
-    return "Customization"
-
 # ── Transform ──
 def transform(wms_data):
     if wms_data.get("code") not in (200, "200"): return wms_data
     raw = wms_data.get("data", {})
+    # Load user-uploaded types from .type files
+    type_map = {}
+    img_dir = "/opt/swaner/data/images"
+    for f in os.listdir(img_dir):
+        if f.endswith(".type"):
+            sku = f[:-5]
+            try:
+                with open(os.path.join(img_dir, f)) as tf:
+                    type_map[sku] = tf.read().strip()
+            except: pass
     details = []
     for order in raw.get("orderList", []):
         for prod in order.get("productList", []):
             sku = prod.get("sku", "")
+            ptype = type_map.get(sku, "Product")
             details.append({
                 "orderNo": order.get("outboundOrderNo", ""), "sku": sku,
                 "qty": prod.get("quantity", 1),
-                "productType": classify(sku, prod.get("productName", "")),
+                "productType": ptype,
                 "trackingNo": order.get("logisticsTrackNo", ""),
                 "carrier": order.get("logisticsCarrier", ""),
                 "productName": prod.get("productName", ""),

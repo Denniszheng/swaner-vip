@@ -446,9 +446,7 @@ async function searchWave() {
     for (const d of details) {
       const orderNo = d.orderNo || '';
       const sku = d.sku || '';
-      let pType = d.productType || 'Product';
-      if (pType === '配件' || pType === 'Accessories' || pType === 'accessories') pType = 'Accessories';
-      else if (pType === '定制品' || pType === 'Customization' || pType === 'customization' || pType === 'Standard' || pType === 'standard' || pType === '普品') pType = 'Product';
+      const pType = d.productType || 'Product';
       const qty = parseInt(d.qty) || 1;
       const trackingNo = d.trackingNo || '';
       allRows.push({ orderNo, waveNo: input, trackingNo, sku, qty, productType: pType, sheetUrl: d.sheetUrl || '' });
