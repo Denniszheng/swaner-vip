@@ -241,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image List (only actual image files, not .type or other metadata)
+    # Image List (deduplicate by SKU, prefer actual image file over .type)
     def _image_list(self, u):
         try:
             img_dir = "/opt/swaner/data/images"
@@ -250,16 +250,19 @@ class Handler(BaseHTTPRequestHandler):
             filter_pt = qp.get("productType", [None])[0]
             filter_search = (qp.get("search", [""])[0] or "").lower()
             IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
-            files = [f for f in os.listdir(img_dir)
-                     if os.path.isfile(os.path.join(img_dir, f))
-                     and os.path.splitext(f)[1].lower() in IMG_EXTS]
-            result = []
-            for f in files:
-                sku = f.rsplit(".",1)[0]
+            all_files = [f for f in os.listdir(img_dir) if os.path.isfile(os.path.join(img_dir, f))]
+            # Group by SKU name, prefer image files over .type
+            by_sku = {}
+            for f in all_files:
+                ext = os.path.splitext(f)[1].lower()
+                sku = f.rsplit(".",1)[0] if ext else f
                 fpath = os.path.join(img_dir, f)
                 stat = os.stat(fpath)
-                entry = {"sku": sku, "fileName": f, "size": stat.st_size,
-                    "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))}
+                if sku not in by_sku or ext in IMG_EXTS:
+                    by_sku[sku] = {"sku": sku, "fileName": f, "size": stat.st_size,
+                        "mtime": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))}
+            result = []
+            for sku, entry in by_sku.items():
                 conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
                 row = conn.execute("SELECT product_type, maintain_date FROM sku_master WHERE sku=?", (sku,)).fetchone()
                 conn.close()
@@ -272,15 +275,14 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json({"error": str(e)}, 500)
 
-    # Image Overview (only count actual image files)
+    # Image Overview
     def _image_overview(self):
         try:
             img_dir = "/opt/swaner/data/images"
             os.makedirs(img_dir, exist_ok=True)
-            IMG_EXTS = {".png",".jpg",".jpeg",".gif",".webp"}
             img_skus = set()
             for f in os.listdir(img_dir):
-                if os.path.isfile(os.path.join(img_dir, f)) and os.path.splitext(f)[1].lower() in IMG_EXTS:
+                if os.path.isfile(os.path.join(img_dir, f)):
                     img_skus.add(f.rsplit(".",1)[0])
             conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row
             sku_rows = conn.execute("SELECT sku, product_type, maintain_date FROM sku_master ORDER BY product_type, sku").fetchall()
